@@ -19,38 +19,67 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <Button x:Name="FolderButton" Grid.Column="0" Click="OnChooseFolderClicked">
+            <Button x:Name="FolderButton" Grid.Column="0" Click="OnChooseFolderClicked" ToolTipService.ToolTip="Pick the folder that holds your sounds">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <FontIcon Glyph="&#xE8B7;" FontSize="14" />
                     <TextBlock Text="Sounds folder" />
                 </StackPanel>
             </Button>
 
-            <Button x:Name="ModeButton" Grid.Column="1" Click="OnModeClicked">
+            <Button x:Name="ModeButton" Grid.Column="1" Click="OnModeClicked" ToolTipService.ToolTip="How a hotkey starts a sound">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <FontIcon x:Name="ModeIcon" Glyph="&#xE71A;" FontSize="14" />
-                    <TextBlock x:Name="ModeLabel" Text="Stop &amp; restart" />
+                    <TextBlock x:Name="ModeLabel" Text="Play &amp; Stop" />
+                </StackPanel>
+            </Button>
+
+            <Button x:Name="PlayModeButton" Grid.Column="2" Click="OnPlayModeClicked" ToolTipService.ToolTip="What happens when a sound ends">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE8EF;" FontSize="14" />
+                    <TextBlock x:Name="PlayModeLabel" Text="Default" />
+                </StackPanel>
+            </Button>
+
+            <Button
+                x:Name="StopAllButton"
+                Grid.Column="3"
+                Click="OnStopAllClicked"
+                ToolTipService.ToolTip="Stop every playing sound">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE71A;" FontSize="14" />
+                    <TextBlock Text="Stop all" />
                 </StackPanel>
             </Button>
 
             <TextBlock
                 x:Name="ModeHint"
-                Grid.Column="2"
+                Grid.Column="4"
                 VerticalAlignment="Center"
                 Opacity="0.6"
                 TextTrimming="CharacterEllipsis" />
 
-            <TextBlock Grid.Column="3" VerticalAlignment="Center" Opacity="0.6" Text="Output" />
+            <TextBlock Grid.Column="5" VerticalAlignment="Center" Opacity="0.6" Text="Output" />
             <ComboBox
                 x:Name="DeviceCombo"
-                Grid.Column="4"
-                MinWidth="280"
+                Grid.Column="6"
+                MinWidth="250"
                 SelectionChanged="OnDeviceChanged" />
+
+            <Button
+                x:Name="SettingsButton"
+                Grid.Column="7"
+                Click="OnSettingsClicked"
+                ToolTipService.ToolTip="Options">
+                <FontIcon Glyph="&#xE713;" FontSize="14" />
+            </Button>
         </Grid>
 
         <!-- Microphone row -->
@@ -88,7 +117,8 @@
                 x:Name="SoundGrid"
                 Padding="14,0,14,14"
                 IsItemClickEnabled="False"
-                SelectionMode="None">
+                SelectionMode="None"
+                RightTapped="OnSoundRightTapped">
                 <GridView.ItemContainerTransitions>
                     <TransitionCollection>
                         <EntranceThemeTransition FromHorizontalOffset="28" FromVerticalOffset="28" />
@@ -166,6 +196,50 @@
                     </DataTemplate>
                 </GridView.ItemTemplate>
             </GridView>
+
+            <ListView
+                x:Name="SoundList"
+                Padding="14,0,14,14"
+                Visibility="Collapsed"
+                IsItemClickEnabled="True"
+                ItemClick="OnSoundItemClick"
+                SelectionMode="None"
+                RightTapped="OnSoundRightTapped">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="models:SoundItem">
+                        <Grid Padding="4,2" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                Text="{x:Bind Name}"
+                                VerticalAlignment="Center"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Opacity="0.65"
+                                Text="{x:Bind HotkeyText, Mode=OneWay}" />
+                            <ProgressRing
+                                Grid.Column="2"
+                                Width="14"
+                                Height="14"
+                                IsActive="True"
+                                Visibility="{x:Bind PlayingVisibility, Mode=OneWay}" />
+                            <TextBlock
+                                Grid.Column="3"
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Opacity="0.45"
+                                Text="{x:Bind GainText, Mode=OneWay}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
 
             <StackPanel
                 x:Name="EmptyState"

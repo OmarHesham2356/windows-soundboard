@@ -4,9 +4,9 @@ A soundboard built for Windows, from the ground up: WASAPI playback into a virtu
 audio cable, global hold-to-play hotkeys, and a native Fluent UI that goes quiet
 when you do.
 
-> Status: early but usable. Library, hotkeys, playback, trigger modes, microphone
-> passthrough, loudness levelling and a tray icon all work. Next: a per-sound
-> playing indicator and the first tagged release.
+> Status: early but usable. Library, hotkeys, playback, trigger and play modes,
+> microphone passthrough, loudness levelling, the tray icon, an Options window and
+> global control hotkeys all work. Next: the first tagged release.
 
 ## Why another soundboard
 
@@ -32,12 +32,18 @@ no bundled browser.
    **Sounds folder**.
 2. Pick your output. The app prefers a virtual cable automatically and marks it
    in the list.
-3. Click a sound to play it, or give it a key with the keyboard button — press the
-   key you want, Escape cancels.
+3. Click a sound to play it, or give it a key: click the keyboard button on the
+   card, or right-click the card and pick **Set hotkey…**. The dialog records the
+   next combination you press — `Ctrl+Shift+F1` works, not just single keys —
+   **Save** assigns it, **Clear** removes it, Escape cancels recording.
 4. Cycle the **trigger mode** button:
-   - **Overlap** — presses layer another copy on top
-   - **Stop & restart** — a press cuts and restarts the sound
-   - **Play & hold** — the sound plays while the key is held and fades out on release
+   - **Play & Overlap** — presses layer another copy on top
+   - **Play & Stop** — a press cuts and restarts the sound
+   - **Push to Loop** — the sound loops while the key is held
+   - **Play & Hold** — the sound plays once while the key is held and fades out on release
+5. Cycle the **play mode** button: **Default** stops at the end, **Loop** repeats the
+   sound until it is stopped, **Continue** starts the next sound when one finishes.
+   **Stop all** (button or its hotkey) cuts everything.
 
 Bound keys are swallowed system-wide, so pressing a sound key does not type into
 the game or chat you are talking in.
@@ -45,6 +51,23 @@ the game or chat you are talking in.
 Closing the window **hides it to the tray** — hotkeys keep firing while the board
 is out of the way. The tray icon menu has *Show/Hide*, *Mute* and *Exit*; muting
 silences the cable and the microphone passthrough without losing the volume setting.
+
+## Options
+
+The gear button opens **Options**, which mirrors the settings of the Linux
+soundboard this project follows:
+
+| Page | What is there |
+| --- | --- |
+| **General** | Sounds folder (change, rescan, open), theme (follow Windows / dark / light), card or compact list layout |
+| **Playback** | Trigger mode, play mode, output device, output volume, loudness boost (0–30 dB), loudness levelling, mute output |
+| **Microphone** | Passthrough on/off, source device, microphone volume, latency profile (400 / 200 / 100 ms buffers) |
+| **Hotkeys** | Record/Clear for *Play / Pause*, *Stop All*, *Previous Sound*, *Next Sound*, *Mute Output*, *Mute Real Mic*, *Cycle Trigger Mode*, *Cycle Play Mode*; shared sound hotkeys and what a shared key plays |
+| **Tray** | Show a tray icon, close button hides the window |
+| **About** | Version, supported formats, paths to the config and the log |
+
+Every change applies immediately. Control hotkeys are global and swallow their
+combination, exactly like sound hotkeys.
 
 ## Build
 
@@ -77,6 +100,8 @@ dotnet publish src/WindowsSoundboard/WindowsSoundboard.csproj -c Release -p:Plat
 | Loudness | `Services/LoudnessAnalyzer.cs` | One decode pass per file, RMS against a target, cached by size and write time. |
 | Config | `Services/ConfigStore.cs` | Small JSON file, enum stored by name. |
 | UI | `MainWindow.xaml` | WinUI 3, Mica backdrop, GridView entrance/reposition transitions, no render loop of our own. |
+| Options | `Views/SettingsWindow.xaml` | Six pages over one config; every edit is re-applied by the main window straight away. |
+| Hotkey dialog | `Views/HotkeyDialog.xaml` | Records combinations through the same hook that fires them. |
 
 ## Licence
 

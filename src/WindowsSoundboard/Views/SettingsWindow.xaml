@@ -1,0 +1,411 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="WindowsSoundboard.Views.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Options">
+
+    <Grid x:Name="Root" Background="Transparent">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="188" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <ListView
+            x:Name="Nav"
+            Padding="8,16,8,16"
+            SelectionChanged="OnNavChanged">
+            <ListViewItem Content="General" Tag="general" />
+            <ListViewItem Content="Playback" Tag="playback" />
+            <ListViewItem Content="Microphone" Tag="microphone" />
+            <ListViewItem Content="Hotkeys" Tag="hotkeys" />
+            <ListViewItem Content="Tray" Tag="tray" />
+            <ListViewItem Content="About" Tag="about" />
+        </ListView>
+
+        <ScrollViewer Grid.Column="1" Padding="16,16,20,24">
+            <StackPanel Spacing="18" MaxWidth="760">
+
+                <!-- General -->
+                <StackPanel x:Name="GeneralPage" Spacing="18">
+                    <TextBlock Text="Library" FontSize="20" FontWeight="SemiBold" />
+
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Sounds folder" FontWeight="SemiBold" />
+                            <TextBlock x:Name="FolderText" Opacity="0.7" TextWrapping="Wrap" />
+                            <TextBlock x:Name="LibraryCountText" FontSize="12" Opacity="0.6" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Change folder…" Click="OnChangeFolderClicked" />
+                                <Button Content="Rescan" Click="OnRescanClicked" />
+                                <Button Content="Open folder" Click="OnOpenFolderClicked" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="Appearance" FontSize="20" FontWeight="SemiBold" />
+
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                        <Grid ColumnSpacing="16" RowSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Theme" FontWeight="SemiBold" />
+                                <TextBlock FontSize="12" Opacity="0.6" Text="Dark, light, or follow Windows." />
+                            </StackPanel>
+                            <ComboBox
+                                x:Name="ThemeCombo"
+                                Grid.Column="1"
+                                MinWidth="180"
+                                SelectionChanged="OnThemeChanged" />
+
+                            <StackPanel Grid.Row="1" Spacing="2">
+                                <TextBlock Text="List style" FontWeight="SemiBold" />
+                                <TextBlock FontSize="12" Opacity="0.6" Text="Grid of cards, or a dense list." />
+                            </StackPanel>
+                            <ComboBox
+                                x:Name="ListStyleCombo"
+                                Grid.Row="1"
+                                Grid.Column="1"
+                                MinWidth="180"
+                                SelectionChanged="OnListStyleChanged" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <!-- Playback -->
+                <StackPanel x:Name="PlaybackPage" Spacing="18" Visibility="Collapsed">
+                    <TextBlock Text="Playback" FontSize="20" FontWeight="SemiBold" />
+
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                        <Grid ColumnSpacing="16" RowSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Trigger mode" FontWeight="SemiBold" />
+                                <TextBlock
+                                    x:Name="TriggerHint"
+                                    FontSize="12"
+                                    Opacity="0.6"
+                                    TextWrapping="Wrap"
+                                    MaxWidth="380"
+                                    HorizontalAlignment="Left" />
+                            </StackPanel>
+                            <ComboBox
+                                x:Name="TriggerCombo"
+                                Grid.Column="1"
+                                MinWidth="180"
+                                SelectionChanged="OnTriggerChanged" />
+
+                            <StackPanel Grid.Row="1" Spacing="2">
+                                <TextBlock Text="Play mode" FontWeight="SemiBold" />
+                                <TextBlock
+                                    x:Name="PlayModeHint"
+                                    FontSize="12"
+                                    Opacity="0.6"
+                                    TextWrapping="Wrap"
+                                    MaxWidth="380"
+                                    HorizontalAlignment="Left" />
+                            </StackPanel>
+                            <ComboBox
+                                x:Name="PlayModeCombo"
+                                Grid.Row="1"
+                                Grid.Column="1"
+                                MinWidth="180"
+                                SelectionChanged="OnPlayModeChanged" />
+
+                            <StackPanel Grid.Row="2" Spacing="2">
+                                <TextBlock Text="Output device" FontWeight="SemiBold" />
+                                <TextBlock FontSize="12" Opacity="0.6" Text="Other apps listen to the virtual cable." TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ComboBox
+                                x:Name="OutputCombo"
+                                Grid.Row="2"
+                                Grid.Column="1"
+                                MinWidth="220"
+                                SelectionChanged="OnOutputChanged" />
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Text="Levels" FontSize="20" FontWeight="SemiBold" />
+
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                        <StackPanel Spacing="14">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Output volume" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock x:Name="VolumeText" Grid.Column="1" VerticalAlignment="Center" Opacity="0.7" />
+                            </Grid>
+                            <Slider
+                                x:Name="VolumeSlider"
+                                Maximum="150"
+                                Minimum="0"
+                                StepFrequency="1"
+                                ValueChanged="OnVolumeChanged" />
+
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Loudness boost" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock x:Name="BoostText" Grid.Column="1" VerticalAlignment="Center" Opacity="0.7" />
+                            </Grid>
+                            <Slider
+                                x:Name="BoostSlider"
+                                Maximum="30"
+                                Minimum="0"
+                                StepFrequency="1"
+                                ValueChanged="OnBoostChanged" />
+                            <TextBlock
+                                FontSize="12"
+                                Opacity="0.6"
+                                TextWrapping="Wrap"
+                                Text="Extra gain applied on top of the levelling. Extreme values clip and distort — this is digital gain, not physical loudness." />
+
+                            <ToggleSwitch
+                                x:Name="NormaliseSwitch"
+                                MinWidth="0"
+                                OffContent="Level every sound to the same loudness"
+                                OnContent="Level every sound to the same loudness"
+                                Toggled="OnNormaliseToggled" />
+                            <ToggleSwitch
+                                x:Name="MuteSwitch"
+                                MinWidth="0"
+                                OffContent="Mute output"
+                                OnContent="Mute output"
+                                Toggled="OnMuteToggled" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Microphone -->
+                <StackPanel x:Name="MicrophonePage" Spacing="18" Visibility="Collapsed">
+                    <TextBlock Text="Microphone" FontSize="20" FontWeight="SemiBold" />
+
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                        <StackPanel Spacing="14">
+                            <ToggleSwitch
+                                x:Name="MicSwitch"
+                                MinWidth="0"
+                                OffContent="Mix the microphone into the cable"
+                                OnContent="Mix the microphone into the cable"
+                                Toggled="OnMicToggled" />
+
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Microphone source" FontWeight="SemiBold" />
+                                    <TextBlock FontSize="12" Opacity="0.6" TextWrapping="Wrap" Text="Choose the microphone you talk into." />
+                                </StackPanel>
+                                <ComboBox
+                                    x:Name="MicCombo"
+                                    Grid.Column="1"
+                                    MinWidth="240"
+                                    SelectionChanged="OnMicChanged" />
+                            </Grid>
+
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Latency profile" FontWeight="SemiBold" />
+                                    <TextBlock FontSize="12" Opacity="0.6" TextWrapping="Wrap" Text="Smaller buffers mean less delay and less slack." />
+                                </StackPanel>
+                                <ComboBox
+                                    x:Name="LatencyCombo"
+                                    Grid.Column="1"
+                                    MinWidth="240"
+                                    SelectionChanged="OnLatencyChanged" />
+                            </Grid>
+
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Microphone volume" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock x:Name="MicVolumeText" Grid.Column="1" VerticalAlignment="Center" Opacity="0.7" />
+                            </Grid>
+                            <Slider
+                                x:Name="MicVolumeSlider"
+                                Maximum="200"
+                                Minimum="0"
+                                StepFrequency="1"
+                                ValueChanged="OnMicVolumeChanged" />
+
+                            <TextBlock x:Name="MicStatusText" FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Hotkeys -->
+                <StackPanel x:Name="HotkeysPage" Spacing="18" Visibility="Collapsed">
+                    <TextBlock Text="Control hotkeys" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock
+                        Opacity="0.7"
+                        TextWrapping="Wrap"
+                        Text="Global keys that drive the app itself. Record a key, then Save — combinations such as Ctrl+Shift+S work anywhere in the board." />
+
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                        <StackPanel x:Name="ControlHotkeyPanel" Spacing="12" />
+                    </Border>
+
+                    <TextBlock Text="Sound hotkeys" FontSize="20" FontWeight="SemiBold" />
+
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                        <StackPanel Spacing="14">
+                            <ToggleSwitch
+                                x:Name="MultiSoundSwitch"
+                                MinWidth="0"
+                                OffContent="One hotkey per sound"
+                                OnContent="Several sounds can share a hotkey"
+                                Toggled="OnMultiSoundToggled" />
+                            <TextBlock
+                                FontSize="12"
+                                Opacity="0.6"
+                                TextWrapping="Wrap"
+                                Text="With sharing on, a key that is already taken is reused instead of refused. Pick what that key plays below." />
+
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Shared hotkey mode" FontWeight="SemiBold" />
+                                    <TextBlock FontSize="12" Opacity="0.6" TextWrapping="Wrap" Text="Which member of a shared hotkey plays." />
+                                </StackPanel>
+                                <ComboBox
+                                    x:Name="GroupModeCombo"
+                                    Grid.Column="1"
+                                    MinWidth="220"
+                                    SelectionChanged="OnGroupModeChanged" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Tray -->
+                <StackPanel x:Name="TrayPage" Spacing="18" Visibility="Collapsed">
+                    <TextBlock Text="System tray" FontSize="20" FontWeight="SemiBold" />
+
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                        <StackPanel Spacing="14">
+                            <ToggleSwitch
+                                x:Name="TraySwitch"
+                                MinWidth="0"
+                                OffContent="Show a tray icon"
+                                OnContent="Show a tray icon"
+                                Toggled="OnTrayToggled" />
+                            <TextBlock
+                                FontSize="12"
+                                Opacity="0.6"
+                                TextWrapping="Wrap"
+                                Text="Left-click the icon to show or hide the window, right-click for its menu." />
+
+                            <ToggleSwitch
+                                x:Name="CloseToTraySwitch"
+                                MinWidth="0"
+                                OffContent="Closing the window hides it to the tray"
+                                OnContent="Closing the window hides it to the tray"
+                                Toggled="OnCloseToTrayToggled" />
+                            <TextBlock
+                                FontSize="12"
+                                Opacity="0.6"
+                                TextWrapping="Wrap"
+                                Text="Only used while a tray icon is showing, so the window can never be hidden with no way back. Quit from the tray menu to exit for real." />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- About -->
+                <StackPanel x:Name="AboutPage" Spacing="18" Visibility="Collapsed">
+                    <TextBlock Text="About" FontSize="20" FontWeight="SemiBold" />
+
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Windows Soundboard" FontSize="18" FontWeight="SemiBold" />
+                            <TextBlock x:Name="VersionText" Opacity="0.7" />
+                            <TextBlock FontSize="12" Opacity="0.6" TextWrapping="Wrap"
+                                       Text="Supported audio: wav, mp3, ogg, flac, m4a, aac, wma, aiff." />
+                            <TextBlock x:Name="PathsText" FontSize="12" Opacity="0.6" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Open data folder" Click="OnOpenDataFolderClicked" />
+                                <Button Content="Open log" Click="OnOpenLogClicked" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

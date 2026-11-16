@@ -21,17 +21,33 @@ public sealed class AudioEngine : IDisposable
 {
     private const int FadeMilliseconds = 12;
 
+    private sealed record PausedSound(string Path, double PositionSeconds, double GainDb);
+
     private readonly object _gate = new();
     private readonly List<PlaybackItem> _playing = [];
+    private readonly List<PausedSound> _paused = [];
     private MMDevice? _device;
     private WasapiOut? _output;
     private MixingSampleProvider? _mixer;
     private VolumeSampleProvider? _volume;
     private ISampleProvider? _micInput;
     private float _gain = 0.9f;
+    private double _boostDb;
 
     /// <summary>Format the mixer produces, so capture chains can match it.</summary>
     public WaveFormat? MixerFormat => _mixer?.WaveFormat;
+
+    /// <summary>True while sounds are held at their position by Play / Pause.</summary>
+    public bool IsPaused
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _paused.Count > 0;
+            }
+        }
+    }
 
     /// <summary>Adds (or clears, with null) the microphone chain mixed into the output.</summary>
     public void SetMicInput(ISampleProvider? input)
@@ -61,6 +77,12 @@ public sealed class AudioEngine : IDisposable
     /// thread for endings, so listeners must marshal to the UI thread.
     /// </summary>
     public event Action<string, bool>? SoundPlaybackChanged;
+
+    /// <summary>
+    /// Raised when a file reached its natural end (not when it was stopped, paused
+    /// or replaced). Loop and Continue play modes listen to this.
+    /// </summary>
+    public event Action<string>? SoundFinished;
 
     public string CurrentDeviceId { get; private set; } = string.Empty;
 
@@ -143,6 +165,10 @@ public sealed class AudioEngine : IDisposable
         }
     }
 
+    /// <summary>Extra gain in dB applied to sounds (never to the microphone).</summary>
+    public void SetBoostDb(double boostDb)
+        => _boostDb = Math.Clamp(boostDb, 0.0, 30.0);
+
     /// <summary>Silences the cable without losing the volume setting.</summary>
     public void SetMuted(bool muted)
     {
@@ -156,7 +182,14 @@ public sealed class AudioEngine : IDisposable
         }
     }
 
-    public void Play(string path, TriggerMode mode, double gainDb = 0)
+    public void Play(string path, TriggerMode mode, double gainDb = 0, bool loop = false)
+        => PlayCore(path, mode, gainDb, loop, startAtSeconds: 0);
+
+    /// <summary>Starts a held sound, replacing any copy already held for that file.</summary>
+    public void HoldStart(string path, double gainDb = 0, bool loop = false)
+        => PlayCore(path, TriggerMode.Stop, gainDb, loop, startAtSeconds: 0);
+
+    private void PlayCore(string path, TriggerMode mode, double gainDb, bool loop, double startAtSeconds)
     {
         try
         {
@@ -176,6 +209,11 @@ public sealed class AudioEngine : IDisposable
                 var reader = new AudioFileReader(path);
                 ISampleProvider source = reader;
 
+                if (startAtSeconds > 0.05 && startAtSeconds < reader.TotalTime.TotalSeconds)
+                {
+                    reader.CurrentTime = TimeSpan.FromSeconds(startAtSeconds);
+                }
+
                 if (source.WaveFormat.Channels == 1 && _mixer.WaveFormat.Channels == 2)
                 {
                     source = new MonoToStereoSampleProvider(source);
@@ -194,30 +232,33 @@ public sealed class AudioEngine : IDisposable
                     return;
                 }
 
-                if (Math.Abs(gainDb) > 0.05)
+                var totalGainDb = gainDb + _boostDb;
+                if (Math.Abs(totalGainDb) > 0.05)
                 {
-                    source = new VolumeSampleProvider(source) { Volume = (float)Math.Pow(10, gainDb / 20.0) };
+                    source = new VolumeSampleProvider(source)
+                    {
+                        Volume = (float)Math.Pow(10, totalGainDb / 20.0),
+                    };
                 }
 
-                var item = new PlaybackItem(path, source, FadeMilliseconds);
+                var item = new PlaybackItem(path, reader, source, FadeMilliseconds, loop, gainDb);
                 _playing.Add(item);
                 _mixer.AddMixerInput(item);
-                Log.Info($"play {Path.GetFileName(path)} ({mode}, {gainDb:+0.0;-0.0;0.0} dB)");
+                Log.Info($"play {Path.GetFileName(path)} ({mode}, {totalGainDb:+0.0;-0.0;0.0} dB" +
+                         $"{(loop ? ", loop" : string.Empty)}{(startAtSeconds > 0.05 ? $", from {startAtSeconds:0.0}s" : string.Empty)})");
             }
         }
         catch (Exception ex)
         {
             Log.Error($"playing {Path.GetFileName(path)} failed", ex);
+            return;
         }
 
         AnyPlayingChanged?.Invoke(true);
         SoundPlaybackChanged?.Invoke(path, true);
     }
 
-    /// <summary>Starts a held sound, replacing any copy already held for that file.</summary>
-    public void HoldStart(string path, double gainDb = 0) => Play(path, TriggerMode.Stop, gainDb);
-
-    /// <summary>Fades out the held copy of a file (Play &amp; Hold release).</summary>
+    /// <summary>Fades out the held copy of a file (play &amp; hold release).</summary>
     public void HoldStop(string path)
     {
         lock (_gate)
@@ -228,15 +269,75 @@ public sealed class AudioEngine : IDisposable
         AnyPlayingChanged?.Invoke(true);
     }
 
+    /// <summary>Stops everything and forgets any paused position.</summary>
     public void StopAll()
     {
+        bool any;
         lock (_gate)
         {
+            _paused.Clear();
+            any = _playing.Count > 0;
             foreach (var item in _playing)
             {
                 item.RequestStop();
             }
         }
+
+        if (any)
+        {
+            AnyPlayingChanged?.Invoke(false);
+        }
+    }
+
+    /// <summary>
+    /// Holds the playing sounds where they are, remembering their positions so
+    /// <see cref="ResumeSounds"/> can carry on. The microphone keeps running.
+    /// </summary>
+    public void PauseSounds()
+    {
+        lock (_gate)
+        {
+            if (_playing.Count == 0)
+            {
+                return;
+            }
+
+            _paused.Clear();
+            foreach (var item in _playing)
+            {
+                _paused.Add(new PausedSound(item.Path, item.PositionSeconds, item.GainDb));
+            }
+
+            foreach (var item in _playing)
+            {
+                item.RequestStop();
+            }
+        }
+
+        Log.Info("paused");
+    }
+
+    /// <summary>Restarts every sound that <see cref="PauseSounds"/> held.</summary>
+    public void ResumeSounds()
+    {
+        List<PausedSound> resume;
+        lock (_gate)
+        {
+            resume = [.. _paused];
+            _paused.Clear();
+        }
+
+        if (resume.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var sound in resume)
+        {
+            PlayCore(sound.Path, TriggerMode.Stop, sound.GainDb, loop: false, sound.PositionSeconds);
+        }
+
+        Log.Info("resumed");
     }
 
     private void StopPathLocked(string path)
@@ -293,6 +394,7 @@ public sealed class AudioEngine : IDisposable
                 string.Equals(other.Path, item.Path, StringComparison.OrdinalIgnoreCase));
         }
 
+        var naturalEnd = item.NaturalEnd;
         item.Dispose();
         AnyPlayingChanged?.Invoke(_playing.Count > 0);
 
@@ -300,6 +402,11 @@ public sealed class AudioEngine : IDisposable
         {
             Log.Info($"finished {Path.GetFileName(item.Path)}");
             SoundPlaybackChanged?.Invoke(item.Path, false);
+
+            if (naturalEnd)
+            {
+                SoundFinished?.Invoke(item.Path);
+            }
         }
     }
 
@@ -312,6 +419,7 @@ public sealed class AudioEngine : IDisposable
         }
 
         _playing.Clear();
+        _paused.Clear();
 
         if (_mixer is not null)
         {
@@ -339,20 +447,32 @@ public sealed class AudioEngine : IDisposable
 
 /// <summary>
 /// One playing sound. Stopping fades over a few milliseconds, so releasing a held
-/// key or restarting a sound does not click.
+/// key or restarting a sound does not click. A looping copy seeks back to the start
+/// instead of ending.
 /// </summary>
 internal sealed class PlaybackItem : ISampleProvider
 {
     private readonly ISampleProvider _source;
+    private readonly AudioFileReader? _reader;
+    private readonly bool _loop;
     private readonly float _fadeStep;
     private volatile bool _stopping;
     private bool _finished;
     private float _gain = 1f;
 
-    public PlaybackItem(string path, ISampleProvider source, int fadeMilliseconds)
+    public PlaybackItem(
+        string path,
+        AudioFileReader? reader,
+        ISampleProvider source,
+        int fadeMilliseconds,
+        bool loop,
+        double gainDb)
     {
         Path = path;
+        _reader = reader;
         _source = source;
+        _loop = loop;
+        GainDb = gainDb;
         WaveFormat = source.WaveFormat;
         var fadeSamples = Math.Max(1f, WaveFormat.SampleRate * fadeMilliseconds / 1000f);
         _fadeStep = 1f / fadeSamples;
@@ -361,6 +481,28 @@ internal sealed class PlaybackItem : ISampleProvider
     public string Path { get; }
 
     public WaveFormat WaveFormat { get; }
+
+    /// <summary>Gain this copy was started with, so pause can resume it the same way.</summary>
+    public double GainDb { get; }
+
+    /// <summary>Where the file has got to, in seconds.</summary>
+    public double PositionSeconds
+    {
+        get
+        {
+            try
+            {
+                return _reader?.CurrentTime.TotalSeconds ?? 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+    }
+
+    /// <summary>True when the file ran out on its own rather than being stopped.</summary>
+    public bool NaturalEnd { get; private set; }
 
     public void RequestStop() => _stopping = true;
 
@@ -374,8 +516,17 @@ internal sealed class PlaybackItem : ISampleProvider
         var read = _source.Read(buffer, offset, count);
         if (read == 0)
         {
-            _finished = true;
-            return 0;
+            if (_loop && !_stopping && SeekToStart())
+            {
+                read = _source.Read(buffer, offset, count);
+            }
+
+            if (read == 0)
+            {
+                _finished = true;
+                NaturalEnd = !_stopping;
+                return 0;
+            }
         }
 
         if (!_stopping)
@@ -403,6 +554,24 @@ internal sealed class PlaybackItem : ISampleProvider
         }
 
         return read;
+    }
+
+    private bool SeekToStart()
+    {
+        try
+        {
+            if (_reader is null)
+            {
+                return false;
+            }
+
+            _reader.CurrentTime = TimeSpan.Zero;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public void Dispose() => (_source as IDisposable)?.Dispose();

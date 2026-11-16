@@ -9,7 +9,10 @@ public enum TriggerMode
     /// <summary>A press restarts the sound, cutting whatever was playing.</summary>
     Stop,
 
-    /// <summary>The sound plays while the key is held and stops on release.</summary>
+    /// <summary>The sound loops while the key is held and stops on release.</summary>
+    PushToLoop,
+
+    /// <summary>The sound plays once while the key is held and stops on release.</summary>
     Hold,
 }
 
@@ -17,9 +20,10 @@ public static class TriggerModeExtensions
 {
     public static string Label(this TriggerMode mode) => mode switch
     {
-        TriggerMode.Overlap => "Overlap",
-        TriggerMode.Stop => "Stop & restart",
-        TriggerMode.Hold => "Play & hold",
+        TriggerMode.Overlap => "Play & Overlap",
+        TriggerMode.Stop => "Play & Stop",
+        TriggerMode.PushToLoop => "Push to Loop",
+        TriggerMode.Hold => "Play & Hold",
         _ => mode.ToString(),
     };
 
@@ -27,6 +31,7 @@ public static class TriggerModeExtensions
     {
         TriggerMode.Overlap => "Each press layers another copy on top of the last one.",
         TriggerMode.Stop => "Each press restarts the sound from the beginning.",
+        TriggerMode.PushToLoop => "The sound loops while the key is held and stops when you let go.",
         TriggerMode.Hold => "The sound plays while the key is held and stops when you let go.",
         _ => string.Empty,
     };
@@ -34,9 +39,13 @@ public static class TriggerModeExtensions
     public static TriggerMode Next(this TriggerMode mode) => mode switch
     {
         TriggerMode.Overlap => TriggerMode.Stop,
-        TriggerMode.Stop => TriggerMode.Hold,
+        TriggerMode.Stop => TriggerMode.PushToLoop,
+        TriggerMode.PushToLoop => TriggerMode.Hold,
         _ => TriggerMode.Overlap,
     };
 
-    public static bool IsHold(this TriggerMode mode) => mode == TriggerMode.Hold;
+    public static bool IsHold(this TriggerMode mode)
+        => mode is TriggerMode.Hold or TriggerMode.PushToLoop;
+
+    public static bool LoopsWhileHeld(this TriggerMode mode) => mode == TriggerMode.PushToLoop;
 }

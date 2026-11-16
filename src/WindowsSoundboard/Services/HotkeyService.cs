@@ -7,16 +7,34 @@ namespace WindowsSoundboard.Services;
 /// A global low-level keyboard hook. It runs on the UI thread's message loop, so
 /// events arrive on the UI thread. Bound keys are swallowed, so pressing a pad key
 /// does not also type into whatever application has focus.
+///
+/// A binding is a key plus any combination of Ctrl, Alt, Shift and Win. The same
+/// key can serve several sounds when they are allowed to share a hotkey, and keys
+/// can also be bound to the app's own controls (stop all, next sound, …).
 /// </summary>
 public sealed class HotkeyService : IDisposable
 {
+    private sealed class Entry
+    {
+        public required HotkeyBinding Binding { get; init; }
+
+        public SoundItem? Sound { get; init; }
+
+        public string? ControlId { get; init; }
+    }
+
     private readonly Native.LowLevelKeyboardProc _callback;
-    private readonly Dictionary<uint, List<(HotkeyBinding Binding, SoundItem Item)>> _bindings = [];
-    private readonly Dictionary<uint, SoundItem> _held = [];
+    private readonly Dictionary<uint, List<Entry>> _bindings = [];
+    private readonly Dictionary<uint, Entry> _held = [];
+    private readonly Dictionary<string, int> _groupIndex = [];
+    private readonly Dictionary<string, string> _groupLast = [];
 
     private IntPtr _hook;
     private bool _capturing;
-    private SoundItem? _captureTarget;
+    private SoundItem? _captureSound;
+    private string? _captureControl;
+    private bool _multiSounds;
+    private GroupMode _groupMode = GroupMode.Same;
 
     public HotkeyService()
     {
@@ -27,13 +45,21 @@ public sealed class HotkeyService : IDisposable
     /// <summary>Fires on key down (true) and key up (false) for a bound sound.</summary>
     public event Action<SoundItem, bool>? Triggered;
 
+    /// <summary>Fires on key down (true) and key up (false) for a bound control action.</summary>
+    public event Action<string, bool>? ControlTriggered;
+
     /// <summary>Fires when a key was captured for a sound that was waiting for one.</summary>
     public event Action<SoundItem, HotkeyBinding>? Captured;
+
+    /// <summary>Fires when a key was captured for a control action.</summary>
+    public event Action<string, HotkeyBinding>? ControlCaptured;
 
     /// <summary>Fires when capture was abandoned with Escape.</summary>
     public event Action? CaptureCancelled;
 
     public bool IsRunning => _hook != IntPtr.Zero;
+
+    public bool IsCapturing => _capturing;
 
     public void Start()
     {
@@ -58,9 +84,16 @@ public sealed class HotkeyService : IDisposable
         }
     }
 
-    public void SetBindings(IEnumerable<SoundItem> items)
+    public void SetBindings(
+        IEnumerable<SoundItem> items,
+        IReadOnlyDictionary<string, string> controlHotkeys,
+        bool multiSounds,
+        GroupMode groupMode)
     {
+        _multiSounds = multiSounds;
+        _groupMode = groupMode;
         _bindings.Clear();
+
         foreach (var item in items)
         {
             if (!HotkeyBinding.TryParse(item.Hotkey, out var binding) || binding is null)
@@ -73,22 +106,51 @@ public sealed class HotkeyService : IDisposable
                 _bindings[binding.VirtualKey] = list = [];
             }
 
-            list.Add((binding, item));
+            if (!_multiSounds && list.Any(entry => entry.Binding == binding))
+            {
+                Log.Warn($"{item.Hotkey} is already taken; {item.Name} keeps the existing binding");
+                continue;
+            }
+
+            list.Add(new Entry { Binding = binding, Sound = item });
         }
 
-        Log.Info($"hotkey bindings active: {_bindings.Count} keys");
+        foreach (var (id, text) in controlHotkeys)
+        {
+            if (!HotkeyBinding.TryParse(text, out var binding) || binding is null)
+            {
+                continue;
+            }
+
+            if (!_bindings.TryGetValue(binding.VirtualKey, out var list))
+            {
+                _bindings[binding.VirtualKey] = list = [];
+            }
+
+            if (list.Any(entry => entry.Binding == binding))
+            {
+                Log.Warn($"{text} is already taken; the {id} hotkey was not registered");
+                continue;
+            }
+
+            list.Add(new Entry { Binding = binding, ControlId = id });
+        }
+
+        Log.Info($"hotkey bindings active: {_bindings.Count} keys, {controlHotkeys.Count} controls");
     }
 
-    public void BeginCapture(SoundItem item)
+    public void BeginCapture(SoundItem? sound, string? controlId = null)
     {
         _capturing = true;
-        _captureTarget = item;
+        _captureSound = sound;
+        _captureControl = controlId;
     }
 
     public void CancelCapture()
     {
         _capturing = false;
-        _captureTarget = null;
+        _captureSound = null;
+        _captureControl = null;
     }
 
     private IntPtr HookCallback(int code, IntPtr wParam, IntPtr lParam)
@@ -134,13 +196,17 @@ public sealed class HotkeyService : IDisposable
             var binding = HotkeyBinding.FromKey(
                 virtualKey, modifiers.Ctrl, modifiers.Alt, modifiers.Shift, modifiers.Win);
 
-            var target = _captureTarget;
-            _capturing = false;
-            _captureTarget = null;
+            var sound = _captureSound;
+            var control = _captureControl;
+            CancelCapture();
 
-            if (target is not null)
+            if (control is not null)
             {
-                Captured?.Invoke(target, binding);
+                ControlCaptured?.Invoke(control, binding);
+            }
+            else if (sound is not null)
+            {
+                Captured?.Invoke(sound, binding);
             }
 
             return true;
@@ -152,37 +218,97 @@ public sealed class HotkeyService : IDisposable
         }
 
         var held = HotkeyBinding.CurrentModifiers();
-        foreach (var (binding, item) in candidates)
+        foreach (var entry in candidates)
         {
-            if (binding.Ctrl != held.Ctrl ||
-                binding.Alt != held.Alt ||
-                binding.Shift != held.Shift ||
-                binding.Win != held.Win)
+            if (entry.Binding.Ctrl != held.Ctrl ||
+                entry.Binding.Alt != held.Alt ||
+                entry.Binding.Shift != held.Shift ||
+                entry.Binding.Win != held.Win)
             {
                 continue;
             }
 
-            if (!_held.TryAdd(virtualKey, item))
+            if (_held.ContainsKey(virtualKey))
             {
                 // Auto-repeat: this key is already down for its binding.
                 return true;
             }
 
-            Triggered?.Invoke(item, true);
+            if (entry.ControlId is string controlId)
+            {
+                _held[virtualKey] = entry;
+                ControlTriggered?.Invoke(controlId, true);
+                return true;
+            }
+
+            var sounds = candidates
+                .Where(candidate => candidate.Sound is not null && candidate.Binding == entry.Binding)
+                .Select(candidate => candidate.Sound!)
+                .ToList();
+
+            if (sounds.Count == 0)
+            {
+                return false;
+            }
+
+            var key = entry.Binding.Text;
+            var chosen = Choose(sounds, key);
+            _groupLast[key] = chosen.Id;
+
+            var active = new Entry { Binding = entry.Binding, Sound = chosen };
+            _held[virtualKey] = active;
+            Triggered?.Invoke(chosen, true);
             return true;
         }
 
         return false;
     }
 
+    private SoundItem Choose(List<SoundItem> sounds, string key)
+    {
+        if (sounds.Count == 1)
+        {
+            return sounds[0];
+        }
+
+        switch (_groupMode)
+        {
+            case GroupMode.Same:
+                if (_groupLast.TryGetValue(key, out var last) &&
+                    sounds.FirstOrDefault(sound => sound.Id == last) is { } same)
+                {
+                    return same;
+                }
+
+                return sounds[0];
+
+            case GroupMode.Next:
+                var index = _groupIndex.TryGetValue(key, out var next) ? next : 0;
+                var picked = sounds[index % sounds.Count];
+                _groupIndex[key] = (index + 1) % sounds.Count;
+                return picked;
+
+            default:
+                return sounds[Random.Shared.Next(sounds.Count)];
+        }
+    }
+
     private bool HandleUp(uint virtualKey)
     {
-        if (!_held.Remove(virtualKey, out var item))
+        if (!_held.Remove(virtualKey, out var entry))
         {
             return false;
         }
 
-        Triggered?.Invoke(item, false);
+        if (entry.ControlId is string controlId)
+        {
+            ControlTriggered?.Invoke(controlId, false);
+        }
+        else if (entry.Sound is { } sound)
+        {
+            Triggered?.Invoke(sound, false);
+        }
+
         return true;
     }
 

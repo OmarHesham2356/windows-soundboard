@@ -24,6 +24,9 @@ public sealed class MicPassthrough : IDisposable
     private VolumeSampleProvider? _volume;
     private float _gain = 1f;
 
+    /// <summary>Capture buffer length: a shorter one lowers latency at the cost of slack.</summary>
+    public int BufferMilliseconds { get; set; } = 400;
+
     public string CurrentDeviceId { get; private set; } = string.Empty;
 
     public bool IsRunning => _capture is not null;
@@ -99,7 +102,7 @@ public sealed class MicPassthrough : IDisposable
 
             var buffer = new BufferedWaveProvider(inputFormat)
             {
-                BufferDuration = TimeSpan.FromMilliseconds(400),
+                BufferDuration = TimeSpan.FromMilliseconds(Math.Clamp(BufferMilliseconds, 60, 1000)),
                 DiscardOnBufferOverflow = true,
                 ReadFully = true,
             };

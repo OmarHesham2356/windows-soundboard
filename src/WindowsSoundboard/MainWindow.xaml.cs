@@ -1,11 +1,14 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Storage.Pickers;
 using WindowsSoundboard.Models;
 using WindowsSoundboard.Services;
+using WindowsSoundboard.Views;
 
 namespace WindowsSoundboard;
 
@@ -16,11 +19,16 @@ public sealed partial class MainWindow : Window
     private readonly MicPassthrough _mic = new();
     private readonly HotkeyService _hotkeys = new();
     private readonly ObservableCollection<SoundItem> _sounds = [];
+
     private bool _suppressDeviceChange;
     private bool _suppressMicChange;
     private bool _suppressNormaliseChange;
+    private bool _suppressVolumeChange;
     private int _libraryVersion;
+    private string _micSignature = string.Empty;
+    private string? _lastPlayedPath;
     private TrayIcon? _tray;
+    private SettingsWindow? _settings;
     private bool _exitRequested;
     private bool _windowHidden;
 
@@ -31,32 +39,139 @@ public sealed partial class MainWindow : Window
 
         _config = ConfigStore.Load();
         SoundGrid.ItemsSource = _sounds;
+        SoundList.ItemsSource = _sounds;
 
         _engine.AnyPlayingChanged += OnAnyPlayingChanged;
         _engine.SoundPlaybackChanged += OnSoundPlaybackChanged;
+        _engine.SoundFinished += OnSoundFinished;
         _hotkeys.Triggered += OnHotkeyTriggered;
+        _hotkeys.ControlTriggered += OnControlHotkey;
         _hotkeys.Captured += OnHotkeyCaptured;
-        _hotkeys.CaptureCancelled += OnCaptureCancelled;
+
+        _engine.SetVolume(_config.Volume);
+        _engine.SetBoostDb(_config.LoudnessBoostDb);
+        _engine.SetMuted(_config.Muted);
+        _mic.BufferMilliseconds = _config.MicBufferMilliseconds;
+        _mic.SetGain(_config.Muted ? 0 : _config.MicVolume);
 
         LoadDevices();
         LoadMics();
         LoadSounds();
+        ApplyTheme();
+        ApplyListStyle();
         UpdateModeButton();
+        UpdatePlayModeButton();
+        SyncControls();
+
+        _hotkeys.Start();
+        UpdateTray();
+        AppWindow.Closing += OnWindowClosing;
+        Closed += (_, _) => Shutdown();
+
+        Log.Info("window ready");
+    }
+
+    // ---------------------------------------------------------------- settings
+
+    /// <summary>
+    /// Re-applies everything the options window can change. Called after every
+    /// edit there, so settings take effect without a restart.
+    /// </summary>
+    internal void ApplySettings()
+    {
+        var outputChanged =
+            !string.IsNullOrEmpty(_config.OutputDeviceId) &&
+            !string.Equals(_engine.CurrentDeviceId, _config.OutputDeviceId, StringComparison.Ordinal);
+
+        if (outputChanged)
+        {
+            _engine.SetOutput(_config.OutputDeviceId);
+        }
+
+        _engine.SetVolume(_config.Volume);
+        _engine.SetBoostDb(_config.LoudnessBoostDb);
+        _engine.SetMuted(_config.Muted);
+        _mic.BufferMilliseconds = _config.MicBufferMilliseconds;
+        _mic.SetGain(_config.Muted ? 0 : _config.MicVolume);
+
+        var signature = $"{_config.MicPassthrough}|{_config.MicDeviceId}|{_config.MicBufferMilliseconds}";
+        if (outputChanged || signature != _micSignature)
+        {
+            RefreshMic();
+        }
+
+        ApplyTheme();
+        ApplyListStyle();
+        UpdateModeButton();
+        UpdatePlayModeButton();
+        RebindHotkeys();
+
+        var normaliseChanged = NormaliseSwitch.IsOn != _config.NormaliseLoudness;
+        if (normaliseChanged)
+        {
+            _libraryVersion++;
+            _ = AnalyseLoudnessAsync(_libraryVersion);
+        }
+
+        UpdateTray();
+        SyncControls();
+    }
+
+    private void ApplyTheme()
+    {
+        Root.RequestedTheme = _config.Theme switch
+        {
+            AppTheme.Dark => ElementTheme.Dark,
+            AppTheme.Light => ElementTheme.Light,
+            _ => ElementTheme.Default,
+        };
+    }
+
+    private void ApplyListStyle()
+    {
+        var compact = _config.ListStyle == ListStyle.Compact;
+        SoundGrid.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        SoundList.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        EmptyState.Visibility = _sounds.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void RebindHotkeys()
+        => _hotkeys.SetBindings(_sounds, _config.ControlHotkeys, _config.MultiSoundHotkeys, _config.GroupMode);
+
+    private void SyncControls()
+    {
+        _suppressVolumeChange = true;
+        VolumeSlider.Value = Math.Clamp(_config.Volume * 100, 0, 150);
+        _suppressVolumeChange = false;
 
         _suppressNormaliseChange = true;
         NormaliseSwitch.IsOn = _config.NormaliseLoudness;
         _suppressNormaliseChange = false;
 
-        VolumeSlider.Value = Math.Clamp(_config.Volume * 100, 0, 150);
-        _engine.SetVolume(_config.Volume);
+        _suppressMicChange = true;
+        MicSwitch.IsOn = _config.MicPassthrough;
+        if (MicCombo.ItemsSource is IEnumerable<MicDevice> mics)
+        {
+            var match = mics.FirstOrDefault(device => device.Id == _config.MicDeviceId);
+            if (match is not null)
+            {
+                MicCombo.SelectedItem = match;
+            }
+        }
 
-        _hotkeys.Start();
-        ApplyMute(_config.Muted);
-        CreateTray();
-        AppWindow.Closing += OnWindowClosing;
-        Closed += (_, _) => Shutdown();
+        _suppressMicChange = false;
 
-        Log.Info("window ready");
+        _suppressDeviceChange = true;
+        if (DeviceCombo.ItemsSource is IEnumerable<AudioDevice> devices)
+        {
+            var match = devices.FirstOrDefault(device => device.Id == _config.OutputDeviceId);
+            if (match is not null)
+            {
+                DeviceCombo.SelectedItem = match;
+            }
+        }
+
+        _suppressDeviceChange = false;
     }
 
     private void LoadDevices()
@@ -111,7 +226,7 @@ public sealed partial class MainWindow : Window
             _sounds.Add(item);
         }
 
-        _hotkeys.SetBindings(_sounds);
+        RebindHotkeys();
         EmptyState.Visibility = _sounds.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         Log.Info($"library: {_sounds.Count} sounds in '{_config.SoundsFolder}'");
 
@@ -203,6 +318,8 @@ public sealed partial class MainWindow : Window
                  $"{LoudnessAnalyzer.TargetRmsDb:0} dBFS");
     }
 
+    // ------------------------------------------------------------- transport
+
     private void UpdateModeButton()
     {
         ModeLabel.Text = _config.Mode.Label();
@@ -211,9 +328,12 @@ public sealed partial class MainWindow : Window
         {
             TriggerMode.Overlap => "\uE8EE",
             TriggerMode.Stop => "\uE71A",
+            TriggerMode.PushToLoop => "\uE8EF",
             _ => "\uE769",
         };
     }
+
+    private void UpdatePlayModeButton() => PlayModeLabel.Text = _config.PlayMode.Label();
 
     private void OnModeClicked(object sender, RoutedEventArgs e)
     {
@@ -221,6 +341,72 @@ public sealed partial class MainWindow : Window
         ConfigStore.Save(_config);
         UpdateModeButton();
         StatusText.Text = _config.Mode.Description();
+    }
+
+    private void OnPlayModeClicked(object sender, RoutedEventArgs e) => CyclePlayMode();
+
+    private void CyclePlayMode()
+    {
+        _config.PlayMode = _config.PlayMode.Next();
+        ConfigStore.Save(_config);
+        UpdatePlayModeButton();
+        StatusText.Text = _config.PlayMode.Description();
+    }
+
+    private void OnStopAllClicked(object sender, RoutedEventArgs e) => StopAllSounds();
+
+    private void StopAllSounds()
+    {
+        _engine.StopAll();
+        foreach (var item in _sounds)
+        {
+            item.IsPlaying = false;
+        }
+
+        StatusText.Text = "Stopped.";
+    }
+
+    private void TogglePause()
+    {
+        if (_engine.IsPaused)
+        {
+            _engine.ResumeSounds();
+            StatusText.Text = "Resumed.";
+            return;
+        }
+
+        _engine.PauseSounds();
+        StatusText.Text = _engine.IsPaused ? "Paused." : "Nothing is playing.";
+    }
+
+    private void Play(SoundItem item)
+    {
+        // A click cannot be held, so a click in hold mode behaves like a normal press.
+        _lastPlayedPath = item.Path;
+        var mode = _config.Mode.IsHold() ? TriggerMode.Stop : _config.Mode;
+        _engine.Play(item.Path, mode, item.GainDb, loop: _config.PlayMode == PlayMode.Loop);
+    }
+
+    private void PlayRelative(int delta)
+    {
+        if (_sounds.Count == 0)
+        {
+            return;
+        }
+
+        var index = _sounds
+            .Select((item, position) => (item, position))
+            .FirstOrDefault(pair => string.Equals(pair.item.Path, _lastPlayedPath, StringComparison.OrdinalIgnoreCase))
+            .position;
+
+        if (string.IsNullOrEmpty(_lastPlayedPath))
+        {
+            index = delta > 0 ? -1 : 0;
+        }
+
+        var next = ((index + delta) % _sounds.Count + _sounds.Count) % _sounds.Count;
+        Play(_sounds[next]);
+        StatusText.Text = $"Playing {_sounds[next].Name}.";
     }
 
     private void OnDeviceChanged(object sender, SelectionChangedEventArgs e)
@@ -237,6 +423,8 @@ public sealed partial class MainWindow : Window
         _tray?.SetToolTip($"Windows Soundboard \u2014 {device.Name}");
         StatusText.Text = $"Playing into {device.Name}";
     }
+
+    // ----------------------------------------------------------- microphone
 
     private void LoadMics()
     {
@@ -270,6 +458,7 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void RefreshMic()
     {
+        _micSignature = $"{_config.MicPassthrough}|{_config.MicDeviceId}|{_config.MicBufferMilliseconds}";
         _engine.SetMicInput(null);
         _mic.Stop();
 
@@ -322,16 +511,18 @@ public sealed partial class MainWindow : Window
         StatusText.Text = MicSwitch.IsOn ? "Microphone mixed into the cable." : "Microphone passthrough off.";
     }
 
-    private void OnVolumeChanged(object sender, RangeBaseValueChangedEventArgs e)
-    {
-        if (_config is null)
-        {
-            return;
-        }
+    private void ToggleMicPassthrough() => ApplyMicPassthrough(!_config.MicPassthrough);
 
-        _config.Volume = e.NewValue / 100.0;
-        _engine.SetVolume(_config.Volume);
+    private void ApplyMicPassthrough(bool enabled)
+    {
+        _config.MicPassthrough = enabled;
+        ConfigStore.Save(_config);
+        SyncControls();
+        RefreshMic();
+        StatusText.Text = enabled ? "Microphone mixed into the cable." : "Microphone passthrough off.";
     }
+
+    // -------------------------------------------------------------- hotkeys
 
     private void OnPlayClicked(object sender, RoutedEventArgs e)
     {
@@ -341,48 +532,112 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void Play(SoundItem item)
+    private void OnSoundItemClick(object sender, ItemClickEventArgs e)
     {
-        // A click cannot be held, so a click in hold mode behaves like a normal press.
-        var mode = _config.Mode.IsHold() ? TriggerMode.Stop : _config.Mode;
-        _engine.Play(item.Path, mode, item.GainDb);
+        if (e.ClickedItem is SoundItem item)
+        {
+            Play(item);
+        }
     }
 
-    private void OnAssignClicked(object sender, RoutedEventArgs e)
+    private void OnSoundRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is not SoundItem item)
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is not SoundItem item)
         {
             return;
         }
 
-        foreach (var sound in _sounds)
+        var flyout = new MenuFlyout();
+
+        var play = new MenuFlyoutItem { Text = "Play" };
+        play.Click += (_, _) => Play(item);
+        flyout.Items.Add(play);
+
+        var assign = new MenuFlyoutItem { Text = item.Hotkey is null ? "Set hotkey…" : "Update hotkey…" };
+        assign.Click += async (_, _) => await EditHotkeyAsync(item);
+        flyout.Items.Add(assign);
+
+        if (item.Hotkey is not null)
         {
-            sound.IsWaitingForKey = false;
+            var clear = new MenuFlyoutItem { Text = "Clear hotkey" };
+            clear.Click += (_, _) => ClearHotkey(item);
+            flyout.Items.Add(clear);
         }
 
-        item.IsWaitingForKey = true;
-        _hotkeys.BeginCapture(item);
-        StatusText.Text = $"Press the key for \u201c{item.Name}\u201d (Escape cancels)";
+        var reveal = new MenuFlyoutItem { Text = "Show in folder" };
+        reveal.Click += (_, _) =>
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{item.Path}\"") { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Log.Error("opening the folder failed", ex);
+            }
+        };
+        flyout.Items.Add(reveal);
+
+        if (sender is FrameworkElement element)
+        {
+            flyout.ShowAt(element, new FlyoutShowOptions { Position = e.GetPosition(element) });
+        }
+    }
+
+    private void OnAssignClicked(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is SoundItem item)
+        {
+            _ = EditHotkeyAsync(item);
+        }
+    }
+
+    private async Task EditHotkeyAsync(SoundItem item)
+    {
+        _hotkeys.CancelCapture();
+
+        var dialog = new HotkeyDialog(
+            _hotkeys,
+            $"Sound: {item.Name}",
+            item.Hotkey,
+            sound: item)
+        {
+            XamlRoot = Content.XamlRoot,
+        };
+
+        await dialog.ShowAsync();
+
+        if (dialog.Cleared)
+        {
+            ClearHotkey(item);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(dialog.Result))
+        {
+            return;
+        }
+
+        item.Hotkey = dialog.Result;
+        _config.Hotkeys[item.Id] = dialog.Result!;
+        ConfigStore.Save(_config);
+        RebindHotkeys();
+        StatusText.Text = $"{item.Name} \u2192 {dialog.Result}";
+    }
+
+    private void ClearHotkey(SoundItem item)
+    {
+        item.Hotkey = null;
+        _config.Hotkeys.Remove(item.Id);
+        ConfigStore.Save(_config);
+        RebindHotkeys();
+        StatusText.Text = $"{item.Name} has no hotkey.";
     }
 
     private void OnHotkeyCaptured(SoundItem item, HotkeyBinding binding)
     {
+        // The dialog owns capture; this keeps the model in step if one is open elsewhere.
         item.Hotkey = binding.Text;
-        item.IsWaitingForKey = false;
-        _config.Hotkeys[item.Id] = binding.Text;
-        ConfigStore.Save(_config);
-        _hotkeys.SetBindings(_sounds);
-        StatusText.Text = $"{item.Name} \u2192 {binding.Text}";
-    }
-
-    private void OnCaptureCancelled()
-    {
-        foreach (var sound in _sounds)
-        {
-            sound.IsWaitingForKey = false;
-        }
-
-        StatusText.Text = "Key capture cancelled.";
     }
 
     private void OnHotkeyTriggered(SoundItem item, bool isDown)
@@ -391,7 +646,11 @@ public sealed partial class MainWindow : Window
         {
             if (isDown)
             {
-                _engine.HoldStart(item.Path, item.GainDb);
+                _lastPlayedPath = item.Path;
+                _engine.HoldStart(
+                    item.Path,
+                    item.GainDb,
+                    loop: _config.Mode.LoopsWhileHeld() || _config.PlayMode == PlayMode.Loop);
             }
             else
             {
@@ -403,8 +662,62 @@ public sealed partial class MainWindow : Window
 
         if (isDown)
         {
-            _engine.Play(item.Path, _config.Mode, item.GainDb);
+            Play(item);
         }
+    }
+
+    private void OnControlHotkey(string actionId, bool isDown)
+    {
+        if (!isDown)
+        {
+            return;
+        }
+
+        Log.Info($"control hotkey: {actionId}");
+
+        switch (actionId)
+        {
+            case ControlActions.PlayPause:
+                TogglePause();
+                break;
+            case ControlActions.StopAll:
+                StopAllSounds();
+                break;
+            case ControlActions.PreviousSound:
+                PlayRelative(-1);
+                break;
+            case ControlActions.NextSound:
+                PlayRelative(1);
+                break;
+            case ControlActions.MuteOutput:
+                ApplyMute(!_config.Muted);
+                break;
+            case ControlActions.MuteMic:
+                ToggleMicPassthrough();
+                break;
+            case ControlActions.CycleTriggerMode:
+                _config.Mode = _config.Mode.Next();
+                ConfigStore.Save(_config);
+                UpdateModeButton();
+                StatusText.Text = _config.Mode.Label();
+                break;
+            case ControlActions.CyclePlayMode:
+                CyclePlayMode();
+                break;
+        }
+    }
+
+    // ---------------------------------------------------------------- output
+
+    private void OnVolumeChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_suppressVolumeChange)
+        {
+            return;
+        }
+
+        _config.Volume = e.NewValue / 100.0;
+        _engine.SetVolume(_config.Volume);
     }
 
     private void OnNormaliseToggled(object sender, RoutedEventArgs e)
@@ -425,7 +738,7 @@ public sealed partial class MainWindow : Window
 
     private void OnAnyPlayingChanged(bool anyPlaying)
     {
-        // Nothing to do yet: per-sound state arrives through OnSoundPlaybackChanged.
+        // Per-sound state arrives through OnSoundPlaybackChanged.
     }
 
     /// <summary>
@@ -446,7 +759,38 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    private async void OnChooseFolderClicked(object sender, RoutedEventArgs e)
+    /// <summary>Continue play mode: a sound that ran out hands over to the next one.</summary>
+    private void OnSoundFinished(string path)
+    {
+        if (_config.PlayMode != PlayMode.Continue)
+        {
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_config.PlayMode != PlayMode.Continue || _sounds.Count == 0)
+            {
+                return;
+            }
+
+            var index = _sounds
+                .Select((item, position) => (item, position))
+                .FirstOrDefault(pair => string.Equals(pair.item.Path, path, StringComparison.OrdinalIgnoreCase))
+                .position;
+
+            var next = (_sounds.FirstOrDefault(item =>
+                string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase)) is null)
+                ? 0
+                : (index + 1) % _sounds.Count;
+
+            Play(_sounds[next]);
+        });
+    }
+
+    private async void OnChooseFolderClicked(object sender, RoutedEventArgs e) => await ChangeFolderAsync();
+
+    internal async Task ChangeFolderAsync()
     {
         try
         {
@@ -470,6 +814,54 @@ public sealed partial class MainWindow : Window
         {
             Log.Error("folder picker failed", ex);
             StatusText.Text = "Could not open the folder picker.";
+        }
+    }
+
+    internal void ReloadLibrary() => LoadSounds();
+
+    internal string LibrarySummary => $"{_sounds.Count} sounds";
+
+    internal string MicSummary => _mic.IsRunning
+        ? "Passthrough is running."
+        : _config.MicPassthrough
+            ? "Waiting for a microphone…"
+            : "Passthrough is off.";
+
+    // ------------------------------------------------------------------ tray
+
+    private void OnSettingsClicked(object sender, RoutedEventArgs e) => ShowSettings();
+
+    internal void ShowSettings()
+    {
+        if (_settings is not null)
+        {
+            _settings.Activate();
+            return;
+        }
+
+        _settings = new SettingsWindow(this, _config, _engine, _mic, _hotkeys);
+        _settings.Closed += (_, _) => _settings = null;
+        _settings.Activate();
+    }
+
+    private void UpdateTray()
+    {
+        if (_config.TrayEnabled && _tray is null)
+        {
+            CreateTray();
+            return;
+        }
+
+        if (!_config.TrayEnabled && _tray is not null)
+        {
+            _tray.Dispose();
+            _tray = null;
+
+            if (_windowHidden)
+            {
+                AppWindow.Show();
+                _windowHidden = false;
+            }
         }
     }
 
@@ -515,9 +907,10 @@ public sealed partial class MainWindow : Window
     {
         _config.Muted = muted;
         _engine.SetMuted(muted);
-        _mic.SetGain(muted ? 0.0 : 1.0);
+        _mic.SetGain(muted ? 0.0 : _config.MicVolume);
         ConfigStore.Save(_config);
         Log.Info(muted ? "muted" : "unmuted");
+        StatusText.Text = muted ? "Output muted." : "Output unmuted.";
     }
 
     private void RequestExit()
@@ -528,7 +921,7 @@ public sealed partial class MainWindow : Window
 
     private void OnWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
     {
-        if (_exitRequested || _tray is null)
+        if (_exitRequested || _tray is null || !_config.CloseToTray)
         {
             return;
         }
