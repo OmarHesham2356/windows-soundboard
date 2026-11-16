@@ -4,8 +4,8 @@ A soundboard built for Windows, from the ground up: WASAPI playback into a virtu
 audio cable, global hold-to-play hotkeys, and a native Fluent UI that goes quiet
 when you do.
 
-> Status: early. The core loop works (library, hotkeys, playback, trigger modes).
-> Microphone passthrough, loudness normalisation and a tray icon are next.
+> Status: early. The core loop works (library, hotkeys, playback, trigger modes)
+> and so does microphone passthrough. Loudness normalisation and a tray icon are next.
 
 ## Why another soundboard
 
@@ -65,6 +65,7 @@ dotnet publish src/WindowsSoundboard/WindowsSoundboard.csproj -c Release -p:Plat
 | Part | File | Notes |
 | --- | --- | --- |
 | Playback | `Services/AudioEngine.cs` | One WASAPI stream per run, a float mixer, per-sound fades. Overlap comes from many inputs on that mixer. |
+| Microphone | `Services/MicPassthrough.cs` | WASAPI capture into a float buffer, mono→stereo, resampled only when the rates differ, mixed into the same output. |
 | Hotkeys | `Services/HotkeyService.cs` | `WH_KEYBOARD_LL` hook on the UI thread; bound keys are swallowed; releases drive Play & Hold. |
 | Library | `Services/SoundLibrary.cs` | Flat scan of the sounds folder; ids are relative paths so bindings survive moves of the folder. |
 | Config | `Services/ConfigStore.cs` | Small JSON file, enum stored by name. |
