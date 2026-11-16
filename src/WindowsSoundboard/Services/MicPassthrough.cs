@@ -31,6 +31,9 @@ public sealed class MicPassthrough : IDisposable
 
     public bool IsRunning => _capture is not null;
 
+    /// <summary>Volume the microphone is mixed at right now.</summary>
+    public double Gain => _gain;
+
     public IReadOnlyList<MicDevice> ListInputs()
     {
         var devices = new List<MicDevice>();

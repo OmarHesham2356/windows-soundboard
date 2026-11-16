@@ -181,6 +181,7 @@ public sealed partial class SettingsWindow : Window
 
         _config.Theme = (AppTheme)ThemeCombo.SelectedIndex;
         Save();
+        Log.Info($"option theme = {_config.Theme}");
         Root.RequestedTheme = _config.Theme switch
         {
             AppTheme.Dark => ElementTheme.Dark,
@@ -199,6 +200,7 @@ public sealed partial class SettingsWindow : Window
 
         _config.ListStyle = (ListStyle)ListStyleCombo.SelectedIndex;
         Save();
+        Log.Info($"option list style = {_config.ListStyle}");
         _owner.ApplySettings();
     }
 
@@ -214,6 +216,7 @@ public sealed partial class SettingsWindow : Window
         _config.Mode = (TriggerMode)TriggerCombo.SelectedIndex;
         TriggerHint.Text = _config.Mode.Description();
         Save();
+        Log.Info($"option trigger mode = {_config.Mode}");
         _owner.ApplySettings();
     }
 
@@ -227,6 +230,7 @@ public sealed partial class SettingsWindow : Window
         _config.PlayMode = (PlayMode)PlayModeCombo.SelectedIndex;
         PlayModeHint.Text = _config.PlayMode.Description();
         Save();
+        Log.Info($"option play mode = {_config.PlayMode}");
         _owner.ApplySettings();
     }
 
@@ -239,6 +243,7 @@ public sealed partial class SettingsWindow : Window
 
         _config.OutputDeviceId = device.Id;
         Save();
+        Log.Info($"option output = '{device.Name}'");
         _owner.ApplySettings();
     }
 
@@ -253,6 +258,7 @@ public sealed partial class SettingsWindow : Window
         VolumeText.Text = $"{e.NewValue:0}%";
         _engine.SetVolume(_config.Volume);
         Save();
+        Log.Info($"option output volume = {e.NewValue:0}% (engine {_engine.Volume:0.00})");
     }
 
     private void OnBoostChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -266,6 +272,7 @@ public sealed partial class SettingsWindow : Window
         BoostText.Text = $"{e.NewValue:0.0} dB";
         _engine.SetBoostDb(_config.LoudnessBoostDb);
         Save();
+        Log.Info($"option loudness boost = {e.NewValue:0.0} dB (engine {_engine.BoostDb:0.0} dB)");
     }
 
     private void OnNormaliseToggled(object sender, RoutedEventArgs e)
@@ -277,6 +284,7 @@ public sealed partial class SettingsWindow : Window
 
         _config.NormaliseLoudness = NormaliseSwitch.IsOn;
         Save();
+        Log.Info($"option loudness levelling = {_config.NormaliseLoudness}");
         _owner.ApplySettings();
     }
 
@@ -290,6 +298,7 @@ public sealed partial class SettingsWindow : Window
         _config.Muted = MuteSwitch.IsOn;
         Save();
         _owner.ApplySettings();
+        Log.Info($"option mute output = {_config.Muted} (engine muted {_engine.IsMuted})");
     }
 
     // ------------------------------------------------------------- microphone
@@ -304,6 +313,7 @@ public sealed partial class SettingsWindow : Window
         _config.MicPassthrough = MicSwitch.IsOn;
         Save();
         _owner.ApplySettings();
+        Log.Info($"option mic passthrough = {_config.MicPassthrough} (running {_mic.IsRunning})");
         RefreshStatus();
     }
 
@@ -316,6 +326,7 @@ public sealed partial class SettingsWindow : Window
 
         _config.MicDeviceId = device.Id;
         Save();
+        Log.Info($"option mic source = '{device.Name}'");
         _owner.ApplySettings();
         RefreshStatus();
     }
@@ -330,6 +341,7 @@ public sealed partial class SettingsWindow : Window
         _config.MicBufferMilliseconds = LatencyMilliseconds[LatencyCombo.SelectedIndex];
         Save();
         _owner.ApplySettings();
+        Log.Info($"option mic buffer = {_mic.BufferMilliseconds} ms (running {_mic.IsRunning})");
         RefreshStatus();
     }
 
@@ -344,6 +356,7 @@ public sealed partial class SettingsWindow : Window
         MicVolumeText.Text = $"{e.NewValue:0}%";
         Save();
         _owner.ApplySettings();
+        Log.Info($"option mic volume = {_config.MicVolume * 100:0}% (mic gain {_mic.Gain:0.00})");
     }
 
     // ---------------------------------------------------------------- hotkeys
@@ -418,6 +431,7 @@ public sealed partial class SettingsWindow : Window
 
         _config.SetControlHotkey(actionId, dialog.Cleared ? null : dialog.Result);
         Save();
+        Log.Info($"option control hotkey {actionId} = {_config.GetControlHotkey(actionId) ?? "none"}");
         _owner.ApplySettings();
         BuildControlHotkeys();
     }
@@ -431,6 +445,7 @@ public sealed partial class SettingsWindow : Window
 
         _config.SetControlHotkey(actionId, null);
         Save();
+        Log.Info($"option control hotkey {actionId} = none");
         _owner.ApplySettings();
         BuildControlHotkeys();
     }
@@ -444,6 +459,7 @@ public sealed partial class SettingsWindow : Window
 
         _config.MultiSoundHotkeys = MultiSoundSwitch.IsOn;
         Save();
+        Log.Info($"option shared sound hotkeys = {_config.MultiSoundHotkeys}");
         _owner.ApplySettings();
     }
 
@@ -456,6 +472,7 @@ public sealed partial class SettingsWindow : Window
 
         _config.GroupMode = (GroupMode)GroupModeCombo.SelectedIndex;
         Save();
+        Log.Info($"option shared hotkey mode = {_config.GroupMode}");
         _owner.ApplySettings();
     }
 
@@ -470,6 +487,7 @@ public sealed partial class SettingsWindow : Window
 
         _config.TrayEnabled = TraySwitch.IsOn;
         Save();
+        Log.Info($"option tray icon = {_config.TrayEnabled}");
         _owner.ApplySettings();
     }
 
@@ -482,6 +500,7 @@ public sealed partial class SettingsWindow : Window
 
         _config.CloseToTray = CloseToTraySwitch.IsOn;
         Save();
+        Log.Info($"option close to tray = {_config.CloseToTray}");
     }
 
     // ------------------------------------------------------------------ about

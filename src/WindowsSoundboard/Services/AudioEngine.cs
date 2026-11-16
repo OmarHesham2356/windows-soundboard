@@ -21,7 +21,7 @@ public sealed class AudioEngine : IDisposable
 {
     private const int FadeMilliseconds = 12;
 
-    private sealed record PausedSound(string Path, double PositionSeconds, double GainDb);
+    private sealed record PausedSound(string Path, double PositionSeconds, double GainDb, bool Loop);
 
     private readonly object _gate = new();
     private readonly List<PlaybackItem> _playing = [];
@@ -152,6 +152,12 @@ public sealed class AudioEngine : IDisposable
     }
 
     public bool IsMuted { get; private set; }
+
+    /// <summary>Master gain the output stream is playing at right now.</summary>
+    public double Volume => _gain;
+
+    /// <summary>Gain in dB added on top of the levelling for sounds.</summary>
+    public double BoostDb => _boostDb;
 
     public void SetVolume(double volume)
     {
@@ -305,7 +311,7 @@ public sealed class AudioEngine : IDisposable
             _paused.Clear();
             foreach (var item in _playing)
             {
-                _paused.Add(new PausedSound(item.Path, item.PositionSeconds, item.GainDb));
+                _paused.Add(new PausedSound(item.Path, item.PositionSeconds, item.GainDb, item.Loop));
             }
 
             foreach (var item in _playing)
@@ -334,7 +340,7 @@ public sealed class AudioEngine : IDisposable
 
         foreach (var sound in resume)
         {
-            PlayCore(sound.Path, TriggerMode.Stop, sound.GainDb, loop: false, sound.PositionSeconds);
+            PlayCore(sound.Path, TriggerMode.Stop, sound.GainDb, sound.Loop, sound.PositionSeconds);
         }
 
         Log.Info("resumed");
@@ -485,6 +491,9 @@ internal sealed class PlaybackItem : ISampleProvider
     /// <summary>Gain this copy was started with, so pause can resume it the same way.</summary>
     public double GainDb { get; }
 
+    /// <summary>True when this copy wraps instead of ending.</summary>
+    public bool Loop => _loop;
+
     /// <summary>Where the file has got to, in seconds.</summary>
     public double PositionSeconds
     {
@@ -504,6 +513,9 @@ internal sealed class PlaybackItem : ISampleProvider
     /// <summary>True when the file ran out on its own rather than being stopped.</summary>
     public bool NaturalEnd { get; private set; }
 
+    /// <summary>How many times the file has wrapped back to its start.</summary>
+    public int Loops { get; private set; }
+
     public void RequestStop() => _stopping = true;
 
     public int Read(float[] buffer, int offset, int count)
@@ -518,6 +530,12 @@ internal sealed class PlaybackItem : ISampleProvider
         {
             if (_loop && !_stopping && SeekToStart())
             {
+                Loops++;
+                if (Loops == 1)
+                {
+                    Log.Info($"looping {System.IO.Path.GetFileName(Path)}");
+                }
+
                 read = _source.Read(buffer, offset, count);
             }
 

@@ -115,6 +115,19 @@ public sealed partial class MainWindow : Window
 
         UpdateTray();
         SyncControls();
+
+        // One line that proves what actually reached the engine, the microphone and
+        // the UI, rather than what the config merely says.
+        Log.Info(
+            $"settings applied: output='{_engine.CurrentDeviceId}' " +
+            $"engine[volume={_engine.Volume:0.00} boost={_engine.BoostDb:0.0}dB muted={_engine.IsMuted}] " +
+            $"trigger={_config.Mode} play={_config.PlayMode} normalise={_config.NormaliseLoudness} " +
+            $"theme={_config.Theme}/{Root.RequestedTheme} list={_config.ListStyle} " +
+            $"cards={SoundGrid.Visibility} listView={SoundList.Visibility} " +
+            $"tray={(_tray is not null ? "on" : "off")} closeToTray={_config.CloseToTray} " +
+            $"mic[running={_mic.IsRunning} gain={_mic.Gain:0.00} buffer={_mic.BufferMilliseconds}ms] " +
+            $"soundHotkeys={_sounds.Count(sound => sound.Hotkey is not null)} " +
+            $"controlHotkeys={_config.ControlHotkeys.Count} shared={_config.MultiSoundHotkeys}/{_config.GroupMode}");
     }
 
     private void ApplyTheme()
