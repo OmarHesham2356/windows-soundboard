@@ -1,0 +1,12 @@
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.idea/
+artifacts/
+AppPackages/
+*.appx
+*.msix
+TestResults/
+*.log
