@@ -27,7 +27,30 @@ public sealed class AudioEngine : IDisposable
     private WasapiOut? _output;
     private MixingSampleProvider? _mixer;
     private VolumeSampleProvider? _volume;
+    private ISampleProvider? _micInput;
     private float _gain = 0.9f;
+
+    /// <summary>Format the mixer produces, so capture chains can match it.</summary>
+    public WaveFormat? MixerFormat => _mixer?.WaveFormat;
+
+    /// <summary>Adds (or clears, with null) the microphone chain mixed into the output.</summary>
+    public void SetMicInput(ISampleProvider? input)
+    {
+        lock (_gate)
+        {
+            if (_micInput is not null && _mixer is not null)
+            {
+                _mixer.RemoveMixerInput(_micInput);
+            }
+
+            _micInput = input;
+
+            if (input is not null && _mixer is not null)
+            {
+                _mixer.AddMixerInput(input);
+            }
+        }
+    }
 
     /// <summary>Raised with true when sound starts and false when the last sound ends.</summary>
     public event Action<bool>? AnyPlayingChanged;
@@ -84,6 +107,9 @@ public sealed class AudioEngine : IDisposable
                 _output = new WasapiOut(_device, AudioClientShareMode.Shared, true, 40);
                 _output.Init(provider);
                 _output.Play();
+
+                // A reopened stream has a new mixer: put the microphone back on it.
+                _micInput = null;
 
                 CurrentDeviceId = _device.ID;
                 Log.Info($"output opened: '{_device.FriendlyName}' {mix.SampleRate} Hz, {mix.Channels} ch, {mix.Encoding}");

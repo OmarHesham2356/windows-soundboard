@@ -13,9 +13,11 @@ public sealed partial class MainWindow : Window
 {
     private readonly AppConfig _config;
     private readonly AudioEngine _engine = new();
+    private readonly MicPassthrough _mic = new();
     private readonly HotkeyService _hotkeys = new();
     private readonly ObservableCollection<SoundItem> _sounds = [];
     private bool _suppressDeviceChange;
+    private bool _suppressMicChange;
 
     public MainWindow()
     {
@@ -31,6 +33,7 @@ public sealed partial class MainWindow : Window
         _hotkeys.CaptureCancelled += OnCaptureCancelled;
 
         LoadDevices();
+        LoadMics();
         LoadSounds();
         UpdateModeButton();
 
@@ -66,6 +69,7 @@ public sealed partial class MainWindow : Window
 
         _config.OutputDeviceId = selected.Id;
         _engine.SetOutput(selected.Id);
+        RefreshMic();
 
         StatusText.Text = selected.IsVirtualCable
             ? $"Playing into {selected.Name}"
@@ -129,7 +133,92 @@ public sealed partial class MainWindow : Window
         _config.OutputDeviceId = device.Id;
         ConfigStore.Save(_config);
         _engine.SetOutput(device.Id);
+        RefreshMic();
         StatusText.Text = $"Playing into {device.Name}";
+    }
+
+    private void LoadMics()
+    {
+        var devices = new List<MicDevice> { new(string.Empty, "(system default microphone)", false) };
+        devices.AddRange(_mic.ListInputs());
+
+        _suppressMicChange = true;
+        MicCombo.ItemsSource = devices;
+        var selected =
+            devices.FirstOrDefault(device => !string.IsNullOrEmpty(_config.MicDeviceId) && device.Id == _config.MicDeviceId)
+            ?? devices.FirstOrDefault(device => !device.IsVirtualCable && !string.IsNullOrEmpty(device.Id))
+            ?? devices[0];
+
+        MicCombo.SelectedItem = selected;
+        MicSwitch.IsOn = _config.MicPassthrough;
+        _suppressMicChange = false;
+
+        if (selected.IsVirtualCable)
+        {
+            MicHint.Text = "This looks like a virtual cable — it would echo the soundboard back into itself.";
+        }
+        else
+        {
+            MicHint.Text = selected.Id.Length == 0 ? "Choose the microphone you talk into." : selected.Name;
+        }
+    }
+
+    /// <summary>
+    /// (Re)opens the microphone chain for the current output format. Called after every
+    /// output change, because a new mixer needs the microphone added to it again.
+    /// </summary>
+    private void RefreshMic()
+    {
+        _engine.SetMicInput(null);
+        _mic.Stop();
+
+        if (!_config.MicPassthrough)
+        {
+            return;
+        }
+
+        // An empty id means "whatever Windows uses by default"; MicPassthrough falls back for us.
+        var format = _engine.MixerFormat;
+        if (format is null)
+        {
+            Log.Warn("microphone not started: no output stream yet");
+            return;
+        }
+
+        var input = _mic.Start(_config.MicDeviceId, format);
+        if (input is null)
+        {
+            StatusText.Text = "Microphone could not be opened.";
+            return;
+        }
+
+        _engine.SetMicInput(input);
+    }
+
+    private void OnMicChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressMicChange || MicCombo.SelectedItem is not MicDevice device)
+        {
+            return;
+        }
+
+        _config.MicDeviceId = device.Id;
+        ConfigStore.Save(_config);
+        RefreshMic();
+        MicHint.Text = device.Id.Length == 0 ? "Choose the microphone you talk into." : device.Name;
+    }
+
+    private void OnMicToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressMicChange)
+        {
+            return;
+        }
+
+        _config.MicPassthrough = MicSwitch.IsOn;
+        ConfigStore.Save(_config);
+        RefreshMic();
+        StatusText.Text = MicSwitch.IsOn ? "Microphone mixed into the cable." : "Microphone passthrough off.";
     }
 
     private void OnVolumeChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -253,6 +342,7 @@ public sealed partial class MainWindow : Window
     {
         ConfigStore.Save(_config);
         _hotkeys.Dispose();
+        _mic.Dispose();
         _engine.Dispose();
         Log.Info("shutdown");
     }

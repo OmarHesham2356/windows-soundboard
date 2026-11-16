@@ -15,6 +15,11 @@ public sealed class AppConfig
 
     public TriggerMode Mode { get; set; } = TriggerMode.Stop;
 
+    public string MicDeviceId { get; set; } = string.Empty;
+
+    /// <summary>Mix the chosen microphone into the cable so other apps hear the voice.</summary>
+    public bool MicPassthrough { get; set; }
+
     /// <summary>Sound id (relative path) to binding text such as "Ctrl+F1".</summary>
     public Dictionary<string, string> Hotkeys { get; set; } = new();
 }

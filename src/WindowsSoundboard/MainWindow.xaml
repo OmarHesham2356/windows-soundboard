@@ -9,6 +9,7 @@
     <Grid x:Name="Root" Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -52,8 +53,37 @@
                 SelectionChanged="OnDeviceChanged" />
         </Grid>
 
+        <!-- Microphone row -->
+        <Grid Grid.Row="1" Padding="20,0,20,10" ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <ToggleSwitch
+                x:Name="MicSwitch"
+                MinWidth="0"
+                OffContent="Mic passthrough"
+                OnContent="Mic passthrough"
+                Toggled="OnMicToggled" />
+
+            <ComboBox
+                x:Name="MicCombo"
+                Grid.Column="1"
+                MinWidth="280"
+                SelectionChanged="OnMicChanged" />
+
+            <TextBlock
+                x:Name="MicHint"
+                Grid.Column="2"
+                VerticalAlignment="Center"
+                Opacity="0.6"
+                TextTrimming="CharacterEllipsis" />
+        </Grid>
+
         <!-- Sound board -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <GridView
                 x:Name="SoundGrid"
                 Padding="14,0,14,14"
@@ -139,7 +169,7 @@
         </Grid>
 
         <!-- Footer -->
-        <Grid Grid.Row="2" Padding="20,6,20,14" ColumnSpacing="12">
+        <Grid Grid.Row="3" Padding="20,6,20,14" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
