@@ -17,6 +17,24 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
+  <!--
+    `dotnet publish` leaves the app's resource index (.pri) and the compiled XAML
+    (.xbf) behind, and an unpackaged WinUI app that cannot find them dies at startup
+    with a stowed exception (0xC000027B) before it can log anything. Copy them with
+    the rest of the output.
+  -->
+  <Target Name="CopyXamlArtifactsToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <XamlArtifact Include="$(TargetDir)$(AssemblyName).pri" />
+      <XamlArtifact Include="$(TargetDir)**\*.xbf" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(XamlArtifact)"
+      DestinationFiles="@(XamlArtifact->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(XamlArtifact)' != ''" />
+  </Target>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />

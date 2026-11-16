@@ -39,6 +39,19 @@ jobs:
       - name: Build
         run: dotnet build src/WindowsSoundboard/WindowsSoundboard.csproj -c Release -p:Platform=x64 --no-restore
 
+      # An unpackaged WinUI app dies at startup (stowed exception 0xC000027B) when
+      # publish drops the resource index or the compiled XAML, so publish is checked
+      # here rather than only when a release is cut.
+      - name: Publish self-contained and check layout
+        shell: pwsh
+        run: |
+          dotnet publish src/WindowsSoundboard/WindowsSoundboard.csproj -c Release `
+            -p:Platform=x64 -r win-x64 --self-contained true -o dist
+          if (-not (Test-Path dist/WindowsSoundboard.exe)) { throw "publish produced no executable" }
+          if (-not (Test-Path dist/WindowsSoundboard.pri)) { throw "publish dropped WindowsSoundboard.pri" }
+          if (-not (Get-ChildItem dist -Filter *.xbf -ErrorAction SilentlyContinue)) { throw "publish dropped the compiled XAML" }
+          Write-Output "publish layout ok"
+
       - name: Upload build output
         uses: actions/upload-artifact@v4
         with:

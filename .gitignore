@@ -5,6 +5,7 @@ obj/
 .vs/
 .idea/
 artifacts/
+dist/
 AppPackages/
 *.appx
 *.msix
