@@ -128,14 +128,21 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock
                                             Text="{x:Bind HotkeyText, Mode=OneWay}"
                                             FontSize="12"
                                             Opacity="0.65"
                                             TextTrimming="CharacterEllipsis" />
-                                        <TextBlock
+                                        <ProgressRing
                                             Grid.Column="1"
+                                            Width="14"
+                                            Height="14"
+                                            IsActive="True"
+                                            Visibility="{x:Bind PlayingVisibility, Mode=OneWay}" />
+                                        <TextBlock
+                                            Grid.Column="2"
                                             Text="{x:Bind GainText, Mode=OneWay}"
                                             FontSize="11"
                                             Opacity="0.45" />

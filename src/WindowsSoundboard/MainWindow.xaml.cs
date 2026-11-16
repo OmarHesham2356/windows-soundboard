@@ -33,6 +33,7 @@ public sealed partial class MainWindow : Window
         SoundGrid.ItemsSource = _sounds;
 
         _engine.AnyPlayingChanged += OnAnyPlayingChanged;
+        _engine.SoundPlaybackChanged += OnSoundPlaybackChanged;
         _hotkeys.Triggered += OnHotkeyTriggered;
         _hotkeys.Captured += OnHotkeyCaptured;
         _hotkeys.CaptureCancelled += OnCaptureCancelled;
@@ -424,7 +425,25 @@ public sealed partial class MainWindow : Window
 
     private void OnAnyPlayingChanged(bool anyPlaying)
     {
-        // Placeholder for a future per-sound indicator; keeps the hook alive for the UI.
+        // Nothing to do yet: per-sound state arrives through OnSoundPlaybackChanged.
+    }
+
+    /// <summary>
+    /// Marks the matching cards as playing or finished. Endings are raised from the
+    /// audio thread, so every update hops to the UI thread.
+    /// </summary>
+    private void OnSoundPlaybackChanged(string path, bool playing)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            foreach (var item in _sounds)
+            {
+                if (string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase))
+                {
+                    item.IsPlaying = playing;
+                }
+            }
+        });
     }
 
     private async void OnChooseFolderClicked(object sender, RoutedEventArgs e)

@@ -74,8 +74,13 @@ public sealed class SoundItem : INotifyPropertyChanged
 
             _isPlaying = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(PlayingVisibility));
         }
     }
+
+    /// <summary>Drives the card's activity ring without a converter in XAML.</summary>
+    public Microsoft.UI.Xaml.Visibility PlayingVisibility
+        => _isPlaying ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     public bool IsWaitingForKey
     {

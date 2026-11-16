@@ -55,6 +55,13 @@ public sealed class AudioEngine : IDisposable
     /// <summary>Raised with true when sound starts and false when the last sound ends.</summary>
     public event Action<bool>? AnyPlayingChanged;
 
+    /// <summary>
+    /// Raised per file: true when a copy starts, false when the last copy of that
+    /// file has finished (overlapping copies keep it true). Fires from the audio
+    /// thread for endings, so listeners must marshal to the UI thread.
+    /// </summary>
+    public event Action<string, bool>? SoundPlaybackChanged;
+
     public string CurrentDeviceId { get; private set; } = string.Empty;
 
     public IReadOnlyList<AudioDevice> ListOutputs()
@@ -195,6 +202,7 @@ public sealed class AudioEngine : IDisposable
                 var item = new PlaybackItem(path, source, FadeMilliseconds);
                 _playing.Add(item);
                 _mixer.AddMixerInput(item);
+                Log.Info($"play {Path.GetFileName(path)} ({mode}, {gainDb:+0.0;-0.0;0.0} dB)");
             }
         }
         catch (Exception ex)
@@ -203,6 +211,7 @@ public sealed class AudioEngine : IDisposable
         }
 
         AnyPlayingChanged?.Invoke(true);
+        SoundPlaybackChanged?.Invoke(path, true);
     }
 
     /// <summary>Starts a held sound, replacing any copy already held for that file.</summary>
@@ -276,13 +285,22 @@ public sealed class AudioEngine : IDisposable
             return;
         }
 
+        bool stillPlayingSameFile;
         lock (_gate)
         {
             _playing.Remove(item);
+            stillPlayingSameFile = _playing.Any(other =>
+                string.Equals(other.Path, item.Path, StringComparison.OrdinalIgnoreCase));
         }
 
         item.Dispose();
         AnyPlayingChanged?.Invoke(_playing.Count > 0);
+
+        if (!stillPlayingSameFile)
+        {
+            Log.Info($"finished {Path.GetFileName(item.Path)}");
+            SoundPlaybackChanged?.Invoke(item.Path, false);
+        }
     }
 
     private void CloseOutputLocked()
