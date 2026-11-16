@@ -26,6 +26,9 @@ public sealed class AppConfig
     /// <summary>Even out per-sound loudness on the way out.</summary>
     public bool NormaliseLoudness { get; set; } = true;
 
+    /// <summary>Silence the cable without touching the volume setting.</summary>
+    public bool Muted { get; set; }
+
     /// <summary>Measured gains, so a file is only analysed once.</summary>
     public Dictionary<string, LoudnessCacheEntry> Loudness { get; set; } = new();
 }

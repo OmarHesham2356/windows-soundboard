@@ -98,7 +98,7 @@ public sealed class AudioEngine : IDisposable
                 var mixerFormat = WaveFormat.CreateIeeeFloatWaveFormat(mix.SampleRate, mix.Channels);
                 _mixer = new MixingSampleProvider(mixerFormat) { ReadFully = true };
                 _mixer.MixerInputEnded += OnMixerInputEnded;
-                _volume = new VolumeSampleProvider(_mixer) { Volume = _gain };
+                _volume = new VolumeSampleProvider(_mixer) { Volume = IsMuted ? 0f : _gain };
 
                 var provider = mix.Encoding == WaveFormatEncoding.IeeeFloat
                     ? _volume.ToWaveProvider()
@@ -122,6 +122,8 @@ public sealed class AudioEngine : IDisposable
         }
     }
 
+    public bool IsMuted { get; private set; }
+
     public void SetVolume(double volume)
     {
         _gain = (float)Math.Clamp(volume, 0.0, 1.5);
@@ -129,7 +131,20 @@ public sealed class AudioEngine : IDisposable
         {
             if (_volume is not null)
             {
-                _volume.Volume = _gain;
+                _volume.Volume = IsMuted ? 0f : _gain;
+            }
+        }
+    }
+
+    /// <summary>Silences the cable without losing the volume setting.</summary>
+    public void SetMuted(bool muted)
+    {
+        IsMuted = muted;
+        lock (_gate)
+        {
+            if (_volume is not null)
+            {
+                _volume.Volume = muted ? 0f : _gain;
             }
         }
     }

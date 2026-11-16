@@ -20,6 +20,9 @@ public sealed partial class MainWindow : Window
     private bool _suppressMicChange;
     private bool _suppressNormaliseChange;
     private int _libraryVersion;
+    private TrayIcon? _tray;
+    private bool _exitRequested;
+    private bool _windowHidden;
 
     public MainWindow()
     {
@@ -47,6 +50,9 @@ public sealed partial class MainWindow : Window
         _engine.SetVolume(_config.Volume);
 
         _hotkeys.Start();
+        ApplyMute(_config.Muted);
+        CreateTray();
+        AppWindow.Closing += OnWindowClosing;
         Closed += (_, _) => Shutdown();
 
         Log.Info("window ready");
@@ -227,6 +233,7 @@ public sealed partial class MainWindow : Window
         ConfigStore.Save(_config);
         _engine.SetOutput(device.Id);
         RefreshMic();
+        _tray?.SetToolTip($"Windows Soundboard \u2014 {device.Name}");
         StatusText.Text = $"Playing into {device.Name}";
     }
 
@@ -447,8 +454,76 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void CreateTray()
+    {
+        try
+        {
+            _tray = new TrayIcon(
+                "Windows Soundboard",
+                ToggleWindowVisibility,
+                ToggleMute,
+                RequestExit,
+                () => !_windowHidden,
+                () => _engine.IsMuted);
+        }
+        catch (Exception ex)
+        {
+            // Without a tray icon closing the window must still quit, or the app
+            // would be unreachable.
+            Log.Error("tray icon unavailable; closing the window will quit", ex);
+            _tray = null;
+        }
+    }
+
+    private void ToggleWindowVisibility()
+    {
+        if (_windowHidden)
+        {
+            AppWindow.Show();
+            Activate();
+            _windowHidden = false;
+        }
+        else
+        {
+            AppWindow.Hide();
+            _windowHidden = true;
+        }
+    }
+
+    private void ToggleMute() => ApplyMute(!_config.Muted);
+
+    private void ApplyMute(bool muted)
+    {
+        _config.Muted = muted;
+        _engine.SetMuted(muted);
+        _mic.SetGain(muted ? 0.0 : 1.0);
+        ConfigStore.Save(_config);
+        Log.Info(muted ? "muted" : "unmuted");
+    }
+
+    private void RequestExit()
+    {
+        _exitRequested = true;
+        Close();
+    }
+
+    private void OnWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        if (_exitRequested || _tray is null)
+        {
+            return;
+        }
+
+        // Hide instead of quitting: hotkeys must keep working while the window is away.
+        args.Cancel = true;
+        AppWindow.Hide();
+        _windowHidden = true;
+        _tray.SetToolTip("Windows Soundboard \u2014 running in the tray");
+    }
+
     private void Shutdown()
     {
+        _tray?.Dispose();
         ConfigStore.Save(_config);
         _hotkeys.Dispose();
         _mic.Dispose();
