@@ -18,6 +18,8 @@ public sealed partial class MainWindow : Window
     private readonly ObservableCollection<SoundItem> _sounds = [];
     private bool _suppressDeviceChange;
     private bool _suppressMicChange;
+    private bool _suppressNormaliseChange;
+    private int _libraryVersion;
 
     public MainWindow()
     {
@@ -36,6 +38,10 @@ public sealed partial class MainWindow : Window
         LoadMics();
         LoadSounds();
         UpdateModeButton();
+
+        _suppressNormaliseChange = true;
+        NormaliseSwitch.IsOn = _config.NormaliseLoudness;
+        _suppressNormaliseChange = false;
 
         VolumeSlider.Value = Math.Clamp(_config.Volume * 100, 0, 150);
         _engine.SetVolume(_config.Volume);
@@ -101,6 +107,93 @@ public sealed partial class MainWindow : Window
         _hotkeys.SetBindings(_sounds);
         EmptyState.Visibility = _sounds.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         Log.Info($"library: {_sounds.Count} sounds in '{_config.SoundsFolder}'");
+
+        _libraryVersion++;
+        _ = AnalyseLoudnessAsync(_libraryVersion);
+    }
+
+    /// <summary>
+    /// Measures every sound once (cached by file size and write time) so playback can
+    /// apply a gain that evens them out. Runs off the UI thread; results are applied
+    /// back on it, and a reload mid-analysis discards the stale results.
+    /// </summary>
+    private async Task AnalyseLoudnessAsync(int version)
+    {
+        var items = _sounds.ToList();
+        if (!_config.NormaliseLoudness)
+        {
+            foreach (var item in items)
+            {
+                item.GainDb = 0;
+            }
+
+            return;
+        }
+
+        var results = await Task.Run(() =>
+        {
+            var measured = new List<(SoundItem Item, double Gain, LoudnessCacheEntry Entry)>();
+            foreach (var item in items)
+            {
+                try
+                {
+                    var info = new FileInfo(item.Path);
+                    if (_config.Loudness.TryGetValue(item.Id, out var cached) &&
+                        cached.Length == info.Length &&
+                        cached.ModifiedTicks == info.LastWriteTimeUtc.Ticks)
+                    {
+                        measured.Add((item, cached.GainDb, cached));
+                        continue;
+                    }
+
+                    var gain = LoudnessAnalyzer.MeasureGain(item.Path);
+                    if (gain is null)
+                    {
+                        continue;
+                    }
+
+                    var entry = new LoudnessCacheEntry
+                    {
+                        Length = info.Length,
+                        ModifiedTicks = info.LastWriteTimeUtc.Ticks,
+                        GainDb = gain.Value,
+                    };
+
+                    measured.Add((item, gain.Value, entry));
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn($"loudness skipped for {item.Name}: {ex.GetType().Name}");
+                }
+            }
+
+            return measured;
+        });
+
+        if (version != _libraryVersion)
+        {
+            return;
+        }
+
+        var boosted = 0;
+        var cut = 0;
+        foreach (var (item, gain, entry) in results)
+        {
+            item.GainDb = gain;
+            _config.Loudness[item.Id] = entry;
+            if (gain > 0.5)
+            {
+                boosted++;
+            }
+            else if (gain < -0.5)
+            {
+                cut++;
+            }
+        }
+
+        ConfigStore.Save(_config);
+        Log.Info($"loudness: {results.Count} measured, {boosted} boosted, {cut} cut, target " +
+                 $"{LoudnessAnalyzer.TargetRmsDb:0} dBFS");
     }
 
     private void UpdateModeButton()
@@ -244,7 +337,7 @@ public sealed partial class MainWindow : Window
     {
         // A click cannot be held, so a click in hold mode behaves like a normal press.
         var mode = _config.Mode.IsHold() ? TriggerMode.Stop : _config.Mode;
-        _engine.Play(item.Path, mode);
+        _engine.Play(item.Path, mode, item.GainDb);
     }
 
     private void OnAssignClicked(object sender, RoutedEventArgs e)
@@ -290,7 +383,7 @@ public sealed partial class MainWindow : Window
         {
             if (isDown)
             {
-                _engine.HoldStart(item.Path);
+                _engine.HoldStart(item.Path, item.GainDb);
             }
             else
             {
@@ -302,8 +395,24 @@ public sealed partial class MainWindow : Window
 
         if (isDown)
         {
-            _engine.Play(item.Path, _config.Mode);
+            _engine.Play(item.Path, _config.Mode, item.GainDb);
         }
+    }
+
+    private void OnNormaliseToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressNormaliseChange)
+        {
+            return;
+        }
+
+        _config.NormaliseLoudness = NormaliseSwitch.IsOn;
+        ConfigStore.Save(_config);
+        _libraryVersion++;
+        _ = AnalyseLoudnessAsync(_libraryVersion);
+        StatusText.Text = NormaliseSwitch.IsOn
+            ? $"Levelling every sound to {LoudnessAnalyzer.TargetRmsDb:0} dBFS."
+            : "Loudness levelling off.";
     }
 
     private void OnAnyPlayingChanged(bool anyPlaying)

@@ -134,7 +134,7 @@ public sealed class AudioEngine : IDisposable
         }
     }
 
-    public void Play(string path, TriggerMode mode)
+    public void Play(string path, TriggerMode mode, double gainDb = 0)
     {
         try
         {
@@ -172,6 +172,11 @@ public sealed class AudioEngine : IDisposable
                     return;
                 }
 
+                if (Math.Abs(gainDb) > 0.05)
+                {
+                    source = new VolumeSampleProvider(source) { Volume = (float)Math.Pow(10, gainDb / 20.0) };
+                }
+
                 var item = new PlaybackItem(path, source, FadeMilliseconds);
                 _playing.Add(item);
                 _mixer.AddMixerInput(item);
@@ -186,7 +191,7 @@ public sealed class AudioEngine : IDisposable
     }
 
     /// <summary>Starts a held sound, replacing any copy already held for that file.</summary>
-    public void HoldStart(string path) => Play(path, TriggerMode.Stop);
+    public void HoldStart(string path, double gainDb = 0) => Play(path, TriggerMode.Stop, gainDb);
 
     /// <summary>Fades out the held copy of a file (Play &amp; Hold release).</summary>
     public void HoldStop(string path)

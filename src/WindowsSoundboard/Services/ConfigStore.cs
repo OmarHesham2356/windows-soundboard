@@ -22,6 +22,21 @@ public sealed class AppConfig
 
     /// <summary>Sound id (relative path) to binding text such as "Ctrl+F1".</summary>
     public Dictionary<string, string> Hotkeys { get; set; } = new();
+
+    /// <summary>Even out per-sound loudness on the way out.</summary>
+    public bool NormaliseLoudness { get; set; } = true;
+
+    /// <summary>Measured gains, so a file is only analysed once.</summary>
+    public Dictionary<string, LoudnessCacheEntry> Loudness { get; set; } = new();
+}
+
+public sealed class LoudnessCacheEntry
+{
+    public long Length { get; set; }
+
+    public long ModifiedTicks { get; set; }
+
+    public double GainDb { get; set; }
 }
 
 public static class ConfigStore

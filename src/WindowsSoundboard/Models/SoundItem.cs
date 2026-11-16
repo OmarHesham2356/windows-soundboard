@@ -9,6 +9,7 @@ public sealed class SoundItem : INotifyPropertyChanged
     private string? _hotkey;
     private bool _isPlaying;
     private bool _isWaitingForKey;
+    private double _gainDb;
 
     public SoundItem(string id, string path, string name)
     {
@@ -41,6 +42,25 @@ public sealed class SoundItem : INotifyPropertyChanged
     }
 
     public string HotkeyText => _isWaitingForKey ? "press a key…" : _hotkey ?? "no key";
+
+    /// <summary>Gain applied on playback so every sound lands at the same level.</summary>
+    public double GainDb
+    {
+        get => _gainDb;
+        set
+        {
+            if (Math.Abs(_gainDb - value) < 0.05)
+            {
+                return;
+            }
+
+            _gainDb = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(GainText));
+        }
+    }
+
+    public string GainText => Math.Abs(_gainDb) < 0.05 ? "0.0 dB" : _gainDb.ToString("+0.0;-0.0") + " dB";
 
     public bool IsPlaying
     {
