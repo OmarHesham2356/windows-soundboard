@@ -224,6 +224,44 @@
                                 Toggled="OnMuteToggled" />
                         </StackPanel>
                     </Border>
+
+                    <TextBlock Text="Local monitoring" FontSize="20" FontWeight="SemiBold" />
+
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                        <StackPanel Spacing="12">
+                            <ToggleSwitch
+                                x:Name="MonitorSwitch"
+                                MinWidth="0"
+                                OffContent="Also play sounds locally"
+                                OnContent="Also play sounds locally"
+                                Toggled="OnMonitorToggled" />
+                            <TextBlock
+                                FontSize="12"
+                                Opacity="0.6"
+                                TextWrapping="Wrap"
+                                Text="Plays the board through a second device so you can hear it while the cable feeds your call. Your microphone is never added to this path, so your own voice cannot reach your speakers — or a screen share — through the board. With this on you can leave Windows' 'Listen to this device' off for the cable." />
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Monitoring device" FontWeight="SemiBold" />
+                                    <TextBlock FontSize="12" Opacity="0.6" TextWrapping="Wrap" Text="Your headphones or speakers — not the board's own output." />
+                                </StackPanel>
+                                <ComboBox
+                                    x:Name="MonitorCombo"
+                                    Grid.Column="1"
+                                    MinWidth="220"
+                                    SelectionChanged="OnMonitorDeviceChanged" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- Microphone -->
@@ -292,6 +330,11 @@
                                 ValueChanged="OnMicVolumeChanged" />
 
                             <TextBlock x:Name="MicStatusText" FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
+                            <TextBlock
+                                FontSize="12"
+                                Opacity="0.6"
+                                TextWrapping="Wrap"
+                                Text="Passthrough only runs while the output is a virtual cable — that is the only path other apps can hear. With a headset as the output it would just echo your voice to yourself and into a screen share, so it is skipped." />
                         </StackPanel>
                     </Border>
                 </StackPanel>

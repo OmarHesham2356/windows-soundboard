@@ -83,6 +83,13 @@ public sealed partial class SettingsWindow : Window
             ?? outputs.FirstOrDefault(device => device.IsVirtualCable)
             ?? outputs.FirstOrDefault();
 
+        MonitorCombo.ItemsSource = outputs;
+        MonitorCombo.SelectedItem =
+            outputs.FirstOrDefault(device => device.Id == _config.MonitorDeviceId)
+            ?? outputs.FirstOrDefault(device => !device.IsVirtualCable)
+            ?? outputs.FirstOrDefault();
+        MonitorSwitch.IsOn = _config.MonitorEnabled;
+
         var mics = new List<MicDevice> { new(string.Empty, "(system default microphone)", false) };
         mics.AddRange(_mic.ListInputs());
         MicCombo.ItemsSource = mics;
@@ -289,6 +296,37 @@ public sealed partial class SettingsWindow : Window
         Save();
         Log.Info($"option loudness levelling = {_config.NormaliseLoudness}");
         _owner.ApplySettings();
+    }
+
+    private void OnMonitorToggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        _config.MonitorEnabled = MonitorSwitch.IsOn;
+        if (MonitorSwitch.IsOn && MonitorCombo.SelectedItem is AudioDevice device)
+        {
+            _config.MonitorDeviceId = device.Id;
+        }
+
+        Save();
+        _owner.ApplySettings();
+        Log.Info($"option local monitoring = {_config.MonitorEnabled} on '{_config.MonitorDeviceId}'");
+    }
+
+    private void OnMonitorDeviceChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || MonitorCombo.SelectedItem is not AudioDevice device)
+        {
+            return;
+        }
+
+        _config.MonitorDeviceId = device.Id;
+        Save();
+        _owner.ApplySettings();
+        Log.Info($"option monitoring device = '{device.Name}'");
     }
 
     private void OnMuteToggled(object sender, RoutedEventArgs e)

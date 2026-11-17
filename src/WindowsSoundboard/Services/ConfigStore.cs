@@ -24,6 +24,12 @@ public sealed class AppConfig
 
     public string MicDeviceId { get; set; } = string.Empty;
 
+    /// <summary>Also play sounds on a second device so they can be heard locally.</summary>
+    public bool MonitorEnabled { get; set; }
+
+    /// <summary>That second device. The microphone is never mixed into it.</summary>
+    public string MonitorDeviceId { get; set; } = string.Empty;
+
     /// <summary>Mix the chosen microphone into the cable so other apps hear the voice.</summary>
     public bool MicPassthrough { get; set; }
 

@@ -33,6 +33,10 @@ public sealed class AudioEngine : IDisposable
     private ISampleProvider? _micInput;
     private float _gain = 0.9f;
     private double _boostDb;
+    private readonly string _label;
+
+    /// <summary>Names this engine's lines in the log, so a mirrored monitor stream is distinguishable.</summary>
+    public AudioEngine(string label = "output") => _label = label;
 
     /// <summary>Format the mixer produces, so capture chains can match it.</summary>
     public WaveFormat? MixerFormat => _mixer?.WaveFormat;
@@ -172,7 +176,7 @@ public sealed class AudioEngine : IDisposable
                 CurrentDeviceId = _device.ID;
                 RefreshDefaultOutput();
 
-                Log.Info($"output opened: '{_device.FriendlyName}' {mix.SampleRate} Hz, {mix.Channels} ch, " +
+                Log.Info($"{_label}: output opened: '{_device.FriendlyName}' {mix.SampleRate} Hz, {mix.Channels} ch, " +
                          $"{mix.Encoding}; default playback is '{DefaultOutputName}'");
             }
             catch (Exception ex)
@@ -282,7 +286,7 @@ public sealed class AudioEngine : IDisposable
                 var item = new PlaybackItem(path, reader, source, FadeMilliseconds, loop, gainDb);
                 _playing.Add(item);
                 _mixer.AddMixerInput(item);
-                Log.Info($"play {Path.GetFileName(path)} ({mode}, {totalGainDb:+0.0;-0.0;0.0} dB" +
+                Log.Info($"{_label}: play {Path.GetFileName(path)} ({mode}, {totalGainDb:+0.0;-0.0;0.0} dB" +
                          $"{(loop ? ", loop" : string.Empty)}{(startAtSeconds > 0.05 ? $", from {startAtSeconds:0.0}s" : string.Empty)})");
             }
         }
@@ -352,7 +356,7 @@ public sealed class AudioEngine : IDisposable
             }
         }
 
-        Log.Info("paused");
+        Log.Info($"{_label}: paused");
     }
 
     /// <summary>Restarts every sound that <see cref="PauseSounds"/> held.</summary>
@@ -375,7 +379,7 @@ public sealed class AudioEngine : IDisposable
             PlayCore(sound.Path, TriggerMode.Stop, sound.GainDb, sound.Loop, sound.PositionSeconds);
         }
 
-        Log.Info("resumed");
+        Log.Info($"{_label}: resumed");
     }
 
     private void StopPathLocked(string path)
@@ -438,7 +442,7 @@ public sealed class AudioEngine : IDisposable
 
         if (!stillPlayingSameFile)
         {
-            Log.Info($"finished {Path.GetFileName(item.Path)}");
+            Log.Info($"{_label}: finished {Path.GetFileName(item.Path)}");
             SoundPlaybackChanged?.Invoke(item.Path, false);
 
             if (naturalEnd)

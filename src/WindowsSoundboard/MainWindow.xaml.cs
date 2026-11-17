@@ -16,6 +16,8 @@ public sealed partial class MainWindow : Window
 {
     private readonly AppConfig _config;
     private readonly AudioEngine _engine = new();
+    private readonly AudioEngine _monitor = new("monitor");
+    private bool _monitorActive;
     private readonly MicPassthrough _mic = new();
     private readonly HotkeyService _hotkeys = new();
     private readonly ObservableCollection<SoundItem> _sounds = [];
@@ -57,6 +59,7 @@ public sealed partial class MainWindow : Window
         LoadDevices();
         LoadMics();
         LoadSounds();
+        ApplyMonitor();
         ApplyTheme();
         ApplyListStyle();
         UpdateModeButton();
@@ -94,6 +97,7 @@ public sealed partial class MainWindow : Window
         _engine.SetMuted(_config.Muted);
         _mic.BufferMilliseconds = _config.MicBufferMilliseconds;
         _mic.SetGain(_config.Muted ? 0 : _config.MicVolume);
+        ApplyMonitor();
 
         var signature = $"{_config.MicPassthrough}|{_config.MicDeviceId}|{_config.MicBufferMilliseconds}";
         if (outputChanged || signature != _micSignature)
@@ -386,6 +390,11 @@ public sealed partial class MainWindow : Window
     private void StopAllSounds()
     {
         _engine.StopAll();
+        if (_monitorActive)
+        {
+            _monitor.StopAll();
+        }
+
         foreach (var item in _sounds)
         {
             item.IsPlaying = false;
@@ -399,11 +408,21 @@ public sealed partial class MainWindow : Window
         if (_engine.IsPaused)
         {
             _engine.ResumeSounds();
+            if (_monitorActive)
+            {
+                _monitor.ResumeSounds();
+            }
+
             StatusText.Text = "Resumed.";
             return;
         }
 
         _engine.PauseSounds();
+        if (_monitorActive)
+        {
+            _monitor.PauseSounds();
+        }
+
         StatusText.Text = _engine.IsPaused ? "Paused." : "Nothing is playing.";
     }
 
@@ -412,7 +431,54 @@ public sealed partial class MainWindow : Window
         // A click cannot be held, so a click in hold mode behaves like a normal press.
         _lastPlayedPath = item.Path;
         var mode = _config.Mode.IsHold() ? TriggerMode.Stop : _config.Mode;
-        _engine.Play(item.Path, mode, item.GainDb, loop: item.Mode == PlayMode.Loop);
+        var loop = item.Mode == PlayMode.Loop;
+        _engine.Play(item.Path, mode, item.GainDb, loop);
+        if (_monitorActive)
+        {
+            _monitor.Play(item.Path, mode, item.GainDb, loop);
+        }
+    }
+
+    /// <summary>
+    /// Opens the local monitoring path: sounds are also played through a second
+    /// device so the board can be heard without monitoring the virtual cable in
+    /// Windows. The microphone is never mixed in here, so a voice cannot reach that
+    /// device — or a screen share that records it — through the board.
+    /// </summary>
+    private void ApplyMonitor()
+    {
+        var enabled = _config.MonitorEnabled &&
+                      !string.IsNullOrEmpty(_config.MonitorDeviceId) &&
+                      !string.Equals(_config.MonitorDeviceId, _config.OutputDeviceId, StringComparison.OrdinalIgnoreCase);
+
+        if (!enabled)
+        {
+            if (_monitorActive)
+            {
+                _monitor.StopAll();
+                _monitorActive = false;
+            }
+
+            if (_config.MonitorEnabled)
+            {
+                Log.Warn("monitor ignored: it needs a device that is not the board's own output");
+            }
+
+            return;
+        }
+
+        if (!string.Equals(_monitor.CurrentDeviceId, _config.MonitorDeviceId, StringComparison.Ordinal))
+        {
+            _monitor.SetOutput(_config.MonitorDeviceId);
+        }
+
+        _monitor.SetVolume(_config.Volume);
+        _monitor.SetBoostDb(_config.LoudnessBoostDb);
+        _monitor.SetMuted(_config.Muted);
+        _monitorActive = _monitor.CurrentDeviceId.Length > 0;
+
+        Log.Info($"monitor: sounds also play through '{_config.MonitorDeviceId}'; " +
+                 $"microphone mixed in: no (active={_monitorActive})");
     }
 
     private void PlayRelative(int delta)
@@ -447,6 +513,7 @@ public sealed partial class MainWindow : Window
         _config.OutputDeviceId = device.Id;
         ConfigStore.Save(_config);
         _engine.SetOutput(device.Id);
+        ApplyMonitor();
         RefreshMic();
         _tray?.SetToolTip($"Windows Soundboard \u2014 {device.Name}");
         StatusText.Text = $"Playing into {device.Name}";
@@ -492,6 +559,20 @@ public sealed partial class MainWindow : Window
 
         if (!_config.MicPassthrough)
         {
+            return;
+        }
+
+        // Mixing a microphone into a physical output just plays the voice back to the
+        // user, and anything that records that device (a Discord screen share, OBS)
+        // then hears it. Only the virtual cable needs a passthrough.
+        var output = (DeviceCombo.ItemsSource as IEnumerable<AudioDevice>)?
+            .FirstOrDefault(device => string.Equals(device.Id, _config.OutputDeviceId, StringComparison.Ordinal));
+
+        if (output is not null && !output.IsVirtualCable)
+        {
+            Log.Info($"microphone not mixed in: output '{output.Name}' is not a virtual cable, so the " +
+                     "passthrough would only echo the voice into the speakers and into screen shares");
+            MicHint.Text = "Mic passthrough needs a virtual cable output; otherwise you only hear yourself.";
             return;
         }
 
@@ -717,14 +798,20 @@ public sealed partial class MainWindow : Window
             if (isDown)
             {
                 _lastPlayedPath = item.Path;
-                _engine.HoldStart(
-                    item.Path,
-                    item.GainDb,
-                    loop: _config.Mode.LoopsWhileHeld() || item.Mode == PlayMode.Loop);
+                var loop = _config.Mode.LoopsWhileHeld() || item.Mode == PlayMode.Loop;
+                _engine.HoldStart(item.Path, item.GainDb, loop);
+                if (_monitorActive)
+                {
+                    _monitor.HoldStart(item.Path, item.GainDb, loop);
+                }
             }
             else
             {
                 _engine.HoldStop(item.Path);
+                if (_monitorActive)
+                {
+                    _monitor.HoldStop(item.Path);
+                }
             }
 
             return;
@@ -788,6 +875,7 @@ public sealed partial class MainWindow : Window
 
         _config.Volume = e.NewValue / 100.0;
         _engine.SetVolume(_config.Volume);
+        _monitor.SetVolume(_config.Volume);
     }
 
     private void OnNormaliseToggled(object sender, RoutedEventArgs e)
@@ -1015,6 +1103,7 @@ public sealed partial class MainWindow : Window
     {
         _config.Muted = muted;
         _engine.SetMuted(muted);
+        _monitor.SetMuted(muted);
         _mic.SetGain(muted ? 0.0 : _config.MicVolume);
         ConfigStore.Save(_config);
         Log.Info(muted ? "muted" : "unmuted");
@@ -1047,6 +1136,7 @@ public sealed partial class MainWindow : Window
         ConfigStore.Save(_config);
         _hotkeys.Dispose();
         _mic.Dispose();
+        _monitor.Dispose();
         _engine.Dispose();
         Log.Info("shutdown");
     }

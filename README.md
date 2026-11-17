@@ -62,7 +62,7 @@ soundboard this project follows:
 | Page | What is there |
 | --- | --- |
 | **General** | Sounds folder (change, rescan, open), theme (follow Windows / dark / light), card or compact list layout |
-| **Playback** | Trigger mode, play mode, output device, output volume, loudness boost (0–30 dB), loudness levelling, mute output |
+| **Playback** | Trigger mode, board default play mode, output device, output volume, loudness boost (0–30 dB), loudness levelling, mute output, local monitoring device |
 | **Microphone** | Passthrough on/off, source device, microphone volume, latency profile (400 / 200 / 100 ms buffers) |
 | **Hotkeys** | Record/Clear for *Play / Pause*, *Stop All*, *Previous Sound*, *Next Sound*, *Mute Output*, *Mute Real Mic*, *Cycle Trigger Mode*, *Cycle Play Mode*; shared sound hotkeys and what a shared key plays |
 | **Tray** | Show a tray icon, close button hides the window |
@@ -92,6 +92,39 @@ The app checks this for you: if its output **is** the Windows default playback
 device it shows a warning bar and logs `screenShareLeak=yes`, because in that setup
 Discord shares everything the board plays. **Mute Output** (tray menu or its hotkey)
 silences the board wherever it is going.
+
+### Keeping your own voice out of the share
+
+Two things in this app could put *your voice* on a device a screen share records,
+and both are now prevented:
+
+1. **Mic passthrough is only applied when the output is a virtual cable.** That is
+the only path other apps can hear. Pointed at a headset or speakers, mixing the
+microphone in would simply play your voice back to you — and to anything recording
+that device, such as a screen share. The app skips it and logs
+`microphone not mixed in: output '…' is not a virtual cable`.
+2. **Local monitoring never contains the microphone.** Turn on **Options →
+   Playback → Local monitoring** and pick your headphones: sounds are played to
+   the cable (so the call hears them) *and* to your headphones (so you do), while
+   the microphone is only ever sent to the cable. Because of that you can turn
+   Windows' *Listen to this device* off for `CABLE Output`, which is the other
+   classic way a voice ends up on a device a share records.
+
+With the board on the cable, monitoring on your headphones and Windows *Listen*
+off, a screen share carries the game and the board but never your microphone.
+
+### Discord's own screen-share audio device
+
+Discord's share picker has an **Audio Device** option under Capture Devices, and
+it defaults to your microphone, which sends the microphone through the share *as
+well as* the call (it is not affected by the mute button). If you share a whole
+screen, that setting can therefore add your voice to the stream. Setting it to a
+silent or unused input, or sharing the **application window** instead of the
+monitor, keeps the voice out of the share entirely.
+
+The board is only in the share if it is audible on the device being recorded;
+with monitoring on, that is your headphones, which is the same path your game
+audio takes.
 
 ## Build
 
