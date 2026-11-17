@@ -121,6 +121,7 @@ public sealed class AudioEngine : IDisposable
 
     public IReadOnlyList<AudioDevice> ListOutputs()
     {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var devices = new List<AudioDevice>();
         try
         {
@@ -137,6 +138,7 @@ public sealed class AudioEngine : IDisposable
             Log.Error("listing output devices failed", ex);
         }
 
+        Log.Info($"timing: listed {devices.Count} outputs in {clock.ElapsedMilliseconds} ms");
         return devices;
     }
 
@@ -145,6 +147,7 @@ public sealed class AudioEngine : IDisposable
     {
         lock (_gate)
         {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 CloseOutputLocked();
@@ -156,7 +159,9 @@ public sealed class AudioEngine : IDisposable
                     return;
                 }
 
+                var resolvedAt = clock.ElapsedMilliseconds;
                 var mix = _device.AudioClient.MixFormat;
+                var mixFormatAt = clock.ElapsedMilliseconds;
                 var mixerFormat = WaveFormat.CreateIeeeFloatWaveFormat(mix.SampleRate, mix.Channels);
                 _mixer = new MixingSampleProvider(mixerFormat) { ReadFully = true };
                 _mixer.MixerInputEnded += OnMixerInputEnded;
@@ -168,7 +173,9 @@ public sealed class AudioEngine : IDisposable
 
                 _output = new WasapiOut(_device, AudioClientShareMode.Shared, true, 40);
                 _output.Init(provider);
+                var initAt = clock.ElapsedMilliseconds;
                 _output.Play();
+                var playAt = clock.ElapsedMilliseconds;
 
                 // A reopened stream has a new mixer: put the microphone back on it.
                 _micInput = null;
@@ -178,6 +185,8 @@ public sealed class AudioEngine : IDisposable
 
                 Log.Info($"{_label}: output opened: '{_device.FriendlyName}' {mix.SampleRate} Hz, {mix.Channels} ch, " +
                          $"{mix.Encoding}; default playback is '{DefaultOutputName}'");
+                Log.Info($"timing: {_label} resolve {resolvedAt} ms, mix format {mixFormatAt - resolvedAt} ms, " +
+                         $"init {initAt - mixFormatAt} ms, play {playAt - initAt} ms, total {clock.ElapsedMilliseconds} ms");
             }
             catch (Exception ex)
             {

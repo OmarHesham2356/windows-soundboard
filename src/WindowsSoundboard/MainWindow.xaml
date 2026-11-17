@@ -273,16 +273,29 @@
             </StackPanel>
         </Grid>
 
-        <!-- Screen-share routing warning -->
-        <InfoBar
-            x:Name="RoutingWarning"
-            Grid.Row="3"
-            Margin="20,0,20,8"
-            Severity="Warning"
-            IsOpen="False"
-            IsClosable="True"
-            Title="Screen shares will hear the board"
-            Message="This output is the Windows default playback device, and Discord's screen-share audio is a loopback of that device. Muting your microphone does not touch it — use Mute Output, or play the board into the virtual cable instead." />
+        <StackPanel Grid.Row="3" Spacing="8" Margin="20,0,20,8">
+            <!-- Screen-share routing warning -->
+            <InfoBar
+                x:Name="RoutingWarning"
+                Severity="Warning"
+                IsOpen="False"
+                IsClosable="True"
+                Title="Screen shares will hear the board"
+                Message="This output is the Windows default playback device, and Discord's screen-share audio is a loopback of that device. Muting your microphone does not touch it — use Mute Output, or play the board into the virtual cable instead." />
+
+            <!-- Hotkeys cannot see an elevated app's keystrokes -->
+            <InfoBar
+                x:Name="ElevationWarning"
+                Severity="Informational"
+                IsOpen="False"
+                IsClosable="True"
+                Title="Global hotkeys cannot see keys typed into elevated apps"
+                Message="The window in front is running as administrator, so Windows hides its keystrokes from this app. Restart Windows Soundboard as administrator to make hotkeys work there.">
+                <InfoBar.ActionButton>
+                    <Button Content="Restart as administrator" Click="OnRestartElevatedClicked" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+        </StackPanel>
 
         <!-- Footer -->
         <Grid Grid.Row="4" Padding="20,6,20,14" ColumnSpacing="12">

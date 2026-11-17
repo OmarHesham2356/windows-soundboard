@@ -33,12 +33,16 @@ public sealed partial class MainWindow : Window
     private SettingsWindow? _settings;
     private bool _exitRequested;
     private bool _windowHidden;
+    private bool _elevationWarningShown;
+    private readonly EventWaitHandle _showSignal = new(false, EventResetMode.AutoReset, App.ShowEventName);
+    private readonly DispatcherTimer _elevationTimer = new() { Interval = TimeSpan.FromSeconds(3) };
 
     public MainWindow()
     {
         InitializeComponent();
         SystemBackdrop = new MicaBackdrop();
 
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         _config = ConfigStore.Load();
         SoundGrid.ItemsSource = _sounds;
         SoundList.ItemsSource = _sounds;
@@ -57,8 +61,10 @@ public sealed partial class MainWindow : Window
         _mic.SetGain(_config.Muted ? 0 : _config.MicVolume);
 
         LoadDevices();
+        Log.Info($"startup timing: audio output opened at {clock.ElapsedMilliseconds} ms");
         LoadMics();
         LoadSounds();
+        Log.Info($"startup timing: library ready at {clock.ElapsedMilliseconds} ms");
         ApplyMonitor();
         ApplyTheme();
         ApplyListStyle();
@@ -68,11 +74,91 @@ public sealed partial class MainWindow : Window
         SyncControls();
 
         _hotkeys.Start();
+        Log.Info($"startup timing: hotkeys live at {clock.ElapsedMilliseconds} ms");
         UpdateTray();
+        StartShowListener();
+        StartElevationWatch();
         AppWindow.Closing += OnWindowClosing;
         Closed += (_, _) => Shutdown();
 
-        Log.Info("window ready");
+        Log.Info($"window ready after {clock.ElapsedMilliseconds} ms");
+    }
+
+    /// <summary>
+    /// A second launch has no window of its own, so it signals this one to come back
+    /// instead of starting a second board with its own keyboard hook.
+    /// </summary>
+    private void StartShowListener()
+    {
+        var listener = new Thread(() =>
+        {
+            while (true)
+            {
+                try
+                {
+                    _showSignal.WaitOne();
+                    DispatcherQueue.TryEnqueue(ShowFromTray);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn($"show-window listener stopped: {ex.GetType().Name}");
+                    return;
+                }
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "show-window",
+        };
+
+        listener.Start();
+    }
+
+    /// <summary>
+    /// Watches what is in front. An elevated window swallows the keystrokes before
+    /// the hook sees them, and there is no error to show for it, so the app says so.
+    /// </summary>
+    private void StartElevationWatch()
+    {
+        _elevationTimer.Tick += (_, _) => CheckForegroundElevation();
+        _elevationTimer.Start();
+        CheckForegroundElevation();
+    }
+
+    private void CheckForegroundElevation()
+    {
+        var blocked = ElevationGuard.ForegroundIsElevatedAndWeAreNot();
+        if (blocked == _elevationWarningShown)
+        {
+            return;
+        }
+
+        _elevationWarningShown = blocked;
+        ElevationWarning.IsOpen = blocked;
+        Log.Info(blocked
+            ? "hotkeys are being blocked: the foreground window is elevated and this app is not"
+            : "foreground is no longer elevated; hotkeys can see the active window again");
+    }
+
+    private void OnRestartElevatedClicked(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Log.Info("restarting elevated at the user's request");
+            Process.Start(new ProcessStartInfo(Environment.ProcessPath ?? "WindowsSoundboard.exe")
+            {
+                Verb = "runas",
+                UseShellExecute = true,
+            });
+
+            _exitRequested = true;
+            Close();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"elevated restart was not started: {ex.GetType().Name}");
+            StatusText.Text = "Restart as administrator was cancelled.";
+        }
     }
 
     // ---------------------------------------------------------------- settings
@@ -1082,13 +1168,18 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void ShowFromTray()
+    {
+        AppWindow.Show();
+        Activate();
+        _windowHidden = false;
+    }
+
     private void ToggleWindowVisibility()
     {
         if (_windowHidden)
         {
-            AppWindow.Show();
-            Activate();
-            _windowHidden = false;
+            ShowFromTray();
         }
         else
         {
