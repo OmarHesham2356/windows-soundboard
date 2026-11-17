@@ -12,6 +12,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Command row -->
@@ -159,6 +160,7 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock
                                             Text="{x:Bind HotkeyText, Mode=OneWay}"
@@ -173,6 +175,11 @@
                                             Visibility="{x:Bind PlayingVisibility, Mode=OneWay}" />
                                         <TextBlock
                                             Grid.Column="2"
+                                            Text="{x:Bind PlayModeText, Mode=OneWay}"
+                                            FontSize="11"
+                                            Opacity="0.5" />
+                                        <TextBlock
+                                            Grid.Column="3"
                                             Text="{x:Bind GainText, Mode=OneWay}"
                                             FontSize="11"
                                             Opacity="0.45" />
@@ -213,6 +220,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock
                                 Text="{x:Bind Name}"
@@ -221,17 +229,23 @@
                             <TextBlock
                                 Grid.Column="1"
                                 VerticalAlignment="Center"
+                                FontSize="11"
+                                Opacity="0.5"
+                                Text="{x:Bind PlayModeText, Mode=OneWay}" />
+                            <TextBlock
+                                Grid.Column="2"
+                                VerticalAlignment="Center"
                                 FontSize="12"
                                 Opacity="0.65"
                                 Text="{x:Bind HotkeyText, Mode=OneWay}" />
                             <ProgressRing
-                                Grid.Column="2"
+                                Grid.Column="3"
                                 Width="14"
                                 Height="14"
                                 IsActive="True"
                                 Visibility="{x:Bind PlayingVisibility, Mode=OneWay}" />
                             <TextBlock
-                                Grid.Column="3"
+                                Grid.Column="4"
                                 VerticalAlignment="Center"
                                 FontSize="11"
                                 Opacity="0.45"
@@ -259,8 +273,19 @@
             </StackPanel>
         </Grid>
 
+        <!-- Screen-share routing warning -->
+        <InfoBar
+            x:Name="RoutingWarning"
+            Grid.Row="3"
+            Margin="20,0,20,8"
+            Severity="Warning"
+            IsOpen="False"
+            IsClosable="True"
+            Title="Screen shares will hear the board"
+            Message="This output is the Windows default playback device, and Discord's screen-share audio is a loopback of that device. Muting your microphone does not touch it — use Mute Output, or play the board into the virtual cable instead." />
+
         <!-- Footer -->
-        <Grid Grid.Row="3" Padding="20,6,20,14" ColumnSpacing="12">
+        <Grid Grid.Row="4" Padding="20,6,20,14" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

@@ -109,6 +109,7 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
                             <StackPanel Spacing="2">
@@ -128,7 +129,7 @@
                                 SelectionChanged="OnTriggerChanged" />
 
                             <StackPanel Grid.Row="1" Spacing="2">
-                                <TextBlock Text="Play mode" FontWeight="SemiBold" />
+                                <TextBlock Text="Board default play mode" FontWeight="SemiBold" />
                                 <TextBlock
                                     x:Name="PlayModeHint"
                                     FontSize="12"
@@ -154,6 +155,14 @@
                                 Grid.Column="1"
                                 MinWidth="220"
                                 SelectionChanged="OnOutputChanged" />
+
+                            <TextBlock
+                                x:Name="RoutingText"
+                                Grid.Row="3"
+                                Grid.ColumnSpan="2"
+                                FontSize="12"
+                                Opacity="0.65"
+                                TextWrapping="Wrap" />
                         </Grid>
                     </Border>
 

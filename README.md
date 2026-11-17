@@ -41,9 +41,11 @@ no bundled browser.
    - **Play & Stop** — a press cuts and restarts the sound
    - **Push to Loop** — the sound loops while the key is held
    - **Play & Hold** — the sound plays once while the key is held and fades out on release
-5. Cycle the **play mode** button: **Default** stops at the end, **Loop** repeats the
-   sound until it is stopped, **Continue** starts the next sound when one finishes.
-   **Stop all** (button or its hotkey) cuts everything.
+5. Play modes are **per sound**: right-click a card → **Play mode** → *Play once*,
+   *Loop* or *Continue*. A loop repeats until it is stopped; *Continue* starts the
+   next sound in the board when this one ends. Sounds without an override follow
+   the board default in **Options → Playback**, and the card shows a `loop` /
+   `continue` badge. **Stop all** (button or its hotkey) cuts everything.
 
 Bound keys are swallowed system-wide, so pressing a sound key does not type into
 the game or chat you are talking in.
@@ -68,6 +70,28 @@ soundboard this project follows:
 
 Every change applies immediately. Control hotkeys are global and swallow their
 combination, exactly like sound hotkeys.
+
+## Screen shares, Discord and the virtual cable
+
+Discord's **Share Audio** is not your microphone: it records what Windows plays
+through the **default playback device** (a loopback), and it is a separate stream
+from your voice. That has two consequences worth knowing:
+
+- **Muting your microphone will not silence the soundboard in a screen share.**
+  The board reaches the share because it is audible on the default playback
+  device, not because of the mic.
+- The board only stays out of a share when it does not play through the device
+  Discord records. Keep the output on the virtual cable (as the app does by
+  default) and leave Windows' **Listen to this device** off for `CABLE Output`;
+  then the board is heard by the people in your call through the virtual mic and
+  not by everyone watching the share. If you do want the board audible locally,
+  Windows' *Listen* setting is what puts it — and therefore the share — back in
+  the loop.
+
+The app checks this for you: if its output **is** the Windows default playback
+device it shows a warning bar and logs `screenShareLeak=yes`, because in that setup
+Discord shares everything the board plays. **Mute Output** (tray menu or its hotkey)
+silences the board wherever it is going.
 
 ## Build
 
@@ -97,6 +121,7 @@ dotnet publish src/WindowsSoundboard/WindowsSoundboard.csproj -c Release -p:Plat
 | Hotkeys | `Services/HotkeyService.cs` | `WH_KEYBOARD_LL` hook on the UI thread; bound keys are swallowed; releases drive Play & Hold. |
 | Library | `Services/SoundLibrary.cs` | Flat scan of the sounds folder; ids are relative paths so bindings survive moves of the folder. |
 | Tray | `Services/TrayIcon.cs` | `Shell_NotifyIcon` on a message-only window: show/hide, mute, exit. No extra package. |
+| Play modes | `Models/SoundItem.cs`, `Services/ConfigStore.cs` | Each sound carries its own mode; `PlayModes` overrides the board default per id. |
 | Loudness | `Services/LoudnessAnalyzer.cs` | One decode pass per file, RMS against a target, cached by size and write time. |
 | Config | `Services/ConfigStore.cs` | Small JSON file, enum stored by name. |
 | UI | `MainWindow.xaml` | WinUI 3, Mica backdrop, GridView entrance/reposition transitions, no render loop of our own. |

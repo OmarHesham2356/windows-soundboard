@@ -86,6 +86,35 @@ public sealed class AudioEngine : IDisposable
 
     public string CurrentDeviceId { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// The Windows default playback endpoint. Discord's screen-share audio is a
+    /// loopback of this device, so anything playing here is heard in a share
+    /// whatever the microphone mute says.
+    /// </summary>
+    public string DefaultOutputId { get; private set; } = string.Empty;
+
+    public string DefaultOutputName { get; private set; } = string.Empty;
+
+    public void RefreshDefaultOutput()
+    {
+        try
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            using var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            DefaultOutputId = device.ID;
+            DefaultOutputName = device.FriendlyName;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"reading the default playback device failed: {ex.GetType().Name}");
+        }
+    }
+
+    /// <summary>True when the board's output is the device screen shares capture.</summary>
+    public bool OutputIsDefault(string deviceId)
+        => !string.IsNullOrEmpty(DefaultOutputId) &&
+           string.Equals(DefaultOutputId, deviceId, StringComparison.OrdinalIgnoreCase);
+
     public IReadOnlyList<AudioDevice> ListOutputs()
     {
         var devices = new List<AudioDevice>();
@@ -141,7 +170,10 @@ public sealed class AudioEngine : IDisposable
                 _micInput = null;
 
                 CurrentDeviceId = _device.ID;
-                Log.Info($"output opened: '{_device.FriendlyName}' {mix.SampleRate} Hz, {mix.Channels} ch, {mix.Encoding}");
+                RefreshDefaultOutput();
+
+                Log.Info($"output opened: '{_device.FriendlyName}' {mix.SampleRate} Hz, {mix.Channels} ch, " +
+                         $"{mix.Encoding}; default playback is '{DefaultOutputName}'");
             }
             catch (Exception ex)
             {

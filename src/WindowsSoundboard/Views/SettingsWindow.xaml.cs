@@ -73,7 +73,8 @@ public sealed partial class SettingsWindow : Window
 
         PlayModeCombo.ItemsSource = new[] { "Default", "Loop", "Continue" };
         PlayModeCombo.SelectedIndex = (int)_config.PlayMode;
-        PlayModeHint.Text = _config.PlayMode.Description();
+        PlayModeHint.Text = _config.PlayMode.Description() +
+                            " Sounds that set their own mode from the right-click menu keep it.";
 
         var outputs = _engine.ListOutputs();
         OutputCombo.ItemsSource = outputs;
@@ -128,6 +129,7 @@ public sealed partial class SettingsWindow : Window
         FolderText.Text = _config.SoundsFolder;
         LibraryCountText.Text = $"{_owner.LibrarySummary} — rescan after adding files";
         MicStatusText.Text = _owner.MicSummary;
+        RoutingText.Text = _owner.RoutingSummary;
         VolumeText.Text = $"{_config.Volume * 100:0}%";
         BoostText.Text = $"{_config.LoudnessBoostDb:0.0} dB";
         MicVolumeText.Text = $"{_config.MicVolume * 100:0}%";
@@ -228,7 +230,8 @@ public sealed partial class SettingsWindow : Window
         }
 
         _config.PlayMode = (PlayMode)PlayModeCombo.SelectedIndex;
-        PlayModeHint.Text = _config.PlayMode.Description();
+        PlayModeHint.Text = _config.PlayMode.Description() +
+                            " Sounds that set their own mode from the right-click menu keep it.";
         Save();
         Log.Info($"option play mode = {_config.PlayMode}");
         _owner.ApplySettings();

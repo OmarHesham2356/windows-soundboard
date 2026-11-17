@@ -61,6 +61,7 @@ public sealed partial class MainWindow : Window
         ApplyListStyle();
         UpdateModeButton();
         UpdatePlayModeButton();
+        RefreshRoutingWarning();
         SyncControls();
 
         _hotkeys.Start();
@@ -104,6 +105,13 @@ public sealed partial class MainWindow : Window
         ApplyListStyle();
         UpdateModeButton();
         UpdatePlayModeButton();
+
+        foreach (var sound in _sounds)
+        {
+            sound.Mode = _config.ModeFor(sound.Id);
+        }
+
+        RefreshRoutingWarning();
         RebindHotkeys();
 
         var normaliseChanged = NormaliseSwitch.IsOn != _config.NormaliseLoudness;
@@ -127,7 +135,8 @@ public sealed partial class MainWindow : Window
             $"tray={(_tray is not null ? "on" : "off")} closeToTray={_config.CloseToTray} " +
             $"mic[running={_mic.IsRunning} gain={_mic.Gain:0.00} buffer={_mic.BufferMilliseconds}ms] " +
             $"soundHotkeys={_sounds.Count(sound => sound.Hotkey is not null)} " +
-            $"controlHotkeys={_config.ControlHotkeys.Count} shared={_config.MultiSoundHotkeys}/{_config.GroupMode}");
+            $"controlHotkeys={_config.ControlHotkeys.Count} shared={_config.MultiSoundHotkeys}/{_config.GroupMode} " +
+            $"soundPlayModes=[{string.Join(", ", _sounds.Select(sound => $"{sound.Name}:{sound.Mode}"))}]");
     }
 
     private void ApplyTheme()
@@ -190,6 +199,11 @@ public sealed partial class MainWindow : Window
     private void LoadDevices()
     {
         var devices = _engine.ListOutputs();
+        foreach (var device in devices)
+        {
+            Log.Info($"output device: '{device.Name}' {device.Id} cable={device.IsVirtualCable}");
+        }
+
         _suppressDeviceChange = true;
         DeviceCombo.ItemsSource = devices;
 
@@ -236,6 +250,7 @@ public sealed partial class MainWindow : Window
                 item.Hotkey = hotkey;
             }
 
+            item.Mode = _config.ModeFor(item.Id);
             _sounds.Add(item);
         }
 
@@ -397,7 +412,7 @@ public sealed partial class MainWindow : Window
         // A click cannot be held, so a click in hold mode behaves like a normal press.
         _lastPlayedPath = item.Path;
         var mode = _config.Mode.IsHold() ? TriggerMode.Stop : _config.Mode;
-        _engine.Play(item.Path, mode, item.GainDb, loop: _config.PlayMode == PlayMode.Loop);
+        _engine.Play(item.Path, mode, item.GainDb, loop: item.Mode == PlayMode.Loop);
     }
 
     private void PlayRelative(int delta)
@@ -577,6 +592,30 @@ public sealed partial class MainWindow : Window
             flyout.Items.Add(clear);
         }
 
+        var modeMenu = new MenuFlyoutSubItem { Text = "Play mode" };
+        foreach (var option in new[] { PlayMode.Default, PlayMode.Loop, PlayMode.Continue })
+        {
+            var entry = new ToggleMenuFlyoutItem
+            {
+                Text = option.Label(),
+                IsChecked = item.Mode == option,
+            };
+
+            var chosen = option;
+            entry.Click += (_, _) => SetSoundPlayMode(item, chosen);
+            modeMenu.Items.Add(entry);
+        }
+
+        if (_config.PlayModes.ContainsKey(item.Id))
+        {
+            modeMenu.Items.Add(new MenuFlyoutSeparator());
+            var follow = new MenuFlyoutItem { Text = $"Use board default ({_config.PlayMode.Label()})" };
+            follow.Click += (_, _) => ClearSoundPlayMode(item);
+            modeMenu.Items.Add(follow);
+        }
+
+        flyout.Items.Add(modeMenu);
+
         var reveal = new MenuFlyoutItem { Text = "Show in folder" };
         reveal.Click += (_, _) =>
         {
@@ -638,6 +677,24 @@ public sealed partial class MainWindow : Window
         StatusText.Text = $"{item.Name} \u2192 {dialog.Result}";
     }
 
+    private void SetSoundPlayMode(SoundItem item, PlayMode mode)
+    {
+        _config.PlayModes[item.Id] = mode;
+        ConfigStore.Save(_config);
+        item.Mode = mode;
+        Log.Info($"sound play mode: {item.Name} = {mode}");
+        StatusText.Text = $"{item.Name}: {mode.Label()}";
+    }
+
+    private void ClearSoundPlayMode(SoundItem item)
+    {
+        _config.PlayModes.Remove(item.Id);
+        ConfigStore.Save(_config);
+        item.Mode = _config.PlayMode;
+        Log.Info($"sound play mode: {item.Name} follows the board default ({_config.PlayMode})");
+        StatusText.Text = $"{item.Name}: board default ({_config.PlayMode.Label()})";
+    }
+
     private void ClearHotkey(SoundItem item)
     {
         item.Hotkey = null;
@@ -663,7 +720,7 @@ public sealed partial class MainWindow : Window
                 _engine.HoldStart(
                     item.Path,
                     item.GainDb,
-                    loop: _config.Mode.LoopsWhileHeld() || _config.PlayMode == PlayMode.Loop);
+                    loop: _config.Mode.LoopsWhileHeld() || item.Mode == PlayMode.Loop);
             }
             else
             {
@@ -772,33 +829,71 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    /// <summary>Continue play mode: a sound that ran out hands over to the next one.</summary>
+    /// <summary>
+    /// Continue play mode, per sound: only a sound set to continue hands over to
+    /// the next one in the board. Each sound decides for itself.
+    /// </summary>
     private void OnSoundFinished(string path)
     {
-        if (_config.PlayMode != PlayMode.Continue)
-        {
-            return;
-        }
-
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (_config.PlayMode != PlayMode.Continue || _sounds.Count == 0)
+            if (_sounds.Count == 0)
             {
                 return;
             }
 
-            var index = _sounds
-                .Select((item, position) => (item, position))
-                .FirstOrDefault(pair => string.Equals(pair.item.Path, path, StringComparison.OrdinalIgnoreCase))
-                .position;
+            var index = -1;
+            for (var position = 0; position < _sounds.Count; position++)
+            {
+                if (string.Equals(_sounds[position].Path, path, StringComparison.OrdinalIgnoreCase))
+                {
+                    index = position;
+                    break;
+                }
+            }
 
-            var next = (_sounds.FirstOrDefault(item =>
-                string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase)) is null)
-                ? 0
-                : (index + 1) % _sounds.Count;
+            if (index < 0 || _sounds[index].Mode != PlayMode.Continue)
+            {
+                return;
+            }
 
-            Play(_sounds[next]);
+            Play(_sounds[(index + 1) % _sounds.Count]);
         });
+    }
+
+    /// <summary>
+    /// Explains, in the window and the log, whether a Discord screen share can hear
+    /// the board. Discord's share audio is Windows loopback of the default playback
+    /// device and is a separate channel from the microphone, so muting the mic can
+    /// never silence it.
+    /// </summary>
+    private void RefreshRoutingWarning()
+    {
+        _engine.RefreshDefaultOutput();
+        var leaks = _engine.OutputIsDefault(_config.OutputDeviceId);
+        RoutingWarning.IsOpen = leaks;
+
+        Log.Info($"routing: output='{_engine.CurrentDeviceId}' defaultPlayback='{_engine.DefaultOutputName}' " +
+                 $"screenShareLeak={(leaks ? "yes - the board plays into the device screen shares capture" : "no")}");
+    }
+
+    internal string RoutingSummary
+    {
+        get
+        {
+            if (_engine.OutputIsDefault(_config.OutputDeviceId))
+            {
+                return $"Screen share: the board plays into '{_engine.DefaultOutputName}', the Windows default " +
+                       "playback device. Discord shares that device's audio and keeps it separate from your " +
+                       "microphone, so muting the mic will not silence the board — use Mute Output, or put the " +
+                       "board back on the virtual cable.";
+            }
+
+            return $"Screen share: the board plays into a device that is not the Windows default " +
+                   $"('{_engine.DefaultOutputName}'), so Discord's share audio does not carry it. If a share " +
+                   "still hears the board, Windows' 'Listen to this device' on the cable is routing it to your " +
+                   "speakers — turn that off.";
+        }
     }
 
     private async void OnChooseFolderClicked(object sender, RoutedEventArgs e) => await ChangeFolderAsync();

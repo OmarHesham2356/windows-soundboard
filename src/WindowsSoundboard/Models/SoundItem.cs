@@ -10,6 +10,7 @@ public sealed class SoundItem : INotifyPropertyChanged
     private bool _isPlaying;
     private bool _isWaitingForKey;
     private double _gainDb;
+    private PlayMode _mode = PlayMode.Default;
 
     public SoundItem(string id, string path, string name)
     {
@@ -42,6 +43,31 @@ public sealed class SoundItem : INotifyPropertyChanged
     }
 
     public string HotkeyText => _isWaitingForKey ? "press a key…" : _hotkey ?? "no key";
+
+    /// <summary>What this sound does at its end; each sound carries its own.</summary>
+    public PlayMode Mode
+    {
+        get => _mode;
+        set
+        {
+            if (_mode == value)
+            {
+                return;
+            }
+
+            _mode = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PlayModeText));
+        }
+    }
+
+    /// <summary>Badge shown on the card; blank for a sound that simply plays once.</summary>
+    public string PlayModeText => _mode switch
+    {
+        PlayMode.Loop => "loop",
+        PlayMode.Continue => "continue",
+        _ => string.Empty,
+    };
 
     /// <summary>Gain applied on playback so every sound lands at the same level.</summary>
     public double GainDb

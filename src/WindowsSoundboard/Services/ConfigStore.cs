@@ -16,8 +16,11 @@ public sealed class AppConfig
     /// <summary>How a press or hotkey starts a sound.</summary>
     public TriggerMode Mode { get; set; } = TriggerMode.Stop;
 
-    /// <summary>What happens when a sound reaches its end.</summary>
+    /// <summary>Fallback play mode for sounds that do not set their own.</summary>
     public PlayMode PlayMode { get; set; } = PlayMode.Default;
+
+    /// <summary>Per-sound overrides of <see cref="PlayMode"/>, keyed by sound id.</summary>
+    public Dictionary<string, PlayMode> PlayModes { get; set; } = new();
 
     public string MicDeviceId { get; set; } = string.Empty;
 
@@ -63,6 +66,21 @@ public sealed class AppConfig
 
     /// <summary>Measured gains, so a file is only analysed once.</summary>
     public Dictionary<string, LoudnessCacheEntry> Loudness { get; set; } = new();
+
+    /// <summary>The play mode a sound actually uses: its own, or the board default.</summary>
+    public PlayMode ModeFor(string soundId)
+        => PlayModes.TryGetValue(soundId, out var mode) ? mode : PlayMode;
+
+    public void SetModeFor(string soundId, PlayMode? mode)
+    {
+        if (mode is null)
+        {
+            PlayModes.Remove(soundId);
+            return;
+        }
+
+        PlayModes[soundId] = mode.Value;
+    }
 
     public string? GetControlHotkey(string actionId)
         => ControlHotkeys.TryGetValue(actionId, out var text) ? text : null;
@@ -113,7 +131,8 @@ public static class ConfigStore
             }
 
             Log.Info($"config loaded: {config.Hotkeys.Count} hotkeys, {config.ControlHotkeys.Count} control " +
-                     $"hotkeys, mode {config.Mode}, play mode {config.PlayMode}, folder '{config.SoundsFolder}'");
+                     $"hotkeys, mode {config.Mode}, default play mode {config.PlayMode}, " +
+                     $"{config.PlayModes.Count} per-sound play modes, folder '{config.SoundsFolder}'");
             return config;
         }
         catch (Exception ex)
