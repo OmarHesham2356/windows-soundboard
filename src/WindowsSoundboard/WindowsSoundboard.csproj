@@ -5,6 +5,9 @@
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>WindowsSoundboard</RootNamespace>
     <AssemblyName>WindowsSoundboard</AssemblyName>
+    <Version>0.1.0</Version>
+    <Product>Windows Soundboard</Product>
+    <Company>Omar Hesham</Company>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

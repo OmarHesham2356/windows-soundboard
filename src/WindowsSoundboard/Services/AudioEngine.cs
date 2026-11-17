@@ -90,6 +90,9 @@ public sealed class AudioEngine : IDisposable
 
     public string CurrentDeviceId { get; private set; } = string.Empty;
 
+    /// <summary>Friendly name of the endpoint currently open, for status text.</summary>
+    public string CurrentDeviceName { get; private set; } = string.Empty;
+
     /// <summary>
     /// The Windows default playback endpoint. Discord's screen-share audio is a
     /// loopback of this device, so anything playing here is heard in a share
@@ -181,6 +184,7 @@ public sealed class AudioEngine : IDisposable
                 _micInput = null;
 
                 CurrentDeviceId = _device.ID;
+                CurrentDeviceName = _device.FriendlyName;
                 RefreshDefaultOutput();
 
                 Log.Info($"{_label}: output opened: '{_device.FriendlyName}' {mix.SampleRate} Hz, {mix.Channels} ch, " +

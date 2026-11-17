@@ -4,9 +4,11 @@ A soundboard built for Windows, from the ground up: WASAPI playback into a virtu
 audio cable, global hold-to-play hotkeys, and a native Fluent UI that goes quiet
 when you do.
 
-> Status: early but usable. Library, hotkeys, playback, trigger and play modes,
-> microphone passthrough, loudness levelling, the tray icon, an Options window and
-> global control hotkeys all work. Next: the first tagged release.
+> Status: **v0.1.0**, the first tagged release. Library, hotkeys, playback, trigger
+> and per-sound play modes, microphone passthrough, loudness levelling, local
+> monitoring, the tray icon, an Options window and global control hotkeys all work.
+> Editing clips, recording, profiles and faster starts are planned for later
+> releases.
 
 ## Why another soundboard
 
@@ -15,6 +17,14 @@ libadwaita application, and its Windows port had to drag ~80 MB of GTK runtime
 along with it. This is a clean-room rewrite on the Windows stack itself: C#,
 WinUI 3 and the Windows App SDK, with NAudio driving WASAPI. No GTK, no Electron,
 no bundled browser.
+
+## Download
+
+Grab `WindowsSoundboard-win-x64.zip` from the [latest release](https://github.com/OmarHesham2356/windows-soundboard/releases/latest), unzip it anywhere and run `WindowsSoundboard.exe`. It is self-contained: no
+.NET install and no SDK are needed. `SHA256SUMS.txt` is attached to the same release
+if you want to verify the download.
+
+You still need VB-CABLE (below) for other apps to hear the board.
 
 ## Requirements
 

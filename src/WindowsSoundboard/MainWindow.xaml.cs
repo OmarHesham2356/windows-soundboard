@@ -286,9 +286,32 @@ public sealed partial class MainWindow : Window
         _suppressDeviceChange = false;
     }
 
+    /// <summary>
+    /// Opens the saved endpoint immediately and lists the rest in the background.
+    /// Enumerating every endpoint to label the dropdown costs seconds on a machine
+    /// with virtual cables, while opening one known device costs a fraction of that;
+    /// nothing about playback needs the full list.
+    /// </summary>
     private void LoadDevices()
     {
-        var devices = _engine.ListOutputs();
+        if (!string.IsNullOrEmpty(_config.OutputDeviceId))
+        {
+            _engine.SetOutput(_config.OutputDeviceId);
+            if (_engine.CurrentDeviceId.Length > 0)
+            {
+                StatusText.Text = $"Playing into {_engine.CurrentDeviceName}";
+                Log.Info($"startup: reopened saved output '{_engine.CurrentDeviceName}' before listing devices");
+            }
+        }
+
+        RefreshMic();
+        _ = PopulateDevicesAsync();
+    }
+
+    private async Task PopulateDevicesAsync()
+    {
+        var devices = await Task.Run(() => _engine.ListOutputs());
+
         foreach (var device in devices)
         {
             Log.Info($"output device: '{device.Name}' {device.Id} cable={device.IsVirtualCable}");
@@ -299,6 +322,7 @@ public sealed partial class MainWindow : Window
 
         var selected =
             devices.FirstOrDefault(device => !string.IsNullOrEmpty(_config.OutputDeviceId) && device.Id == _config.OutputDeviceId)
+            ?? devices.FirstOrDefault(device => device.Id == _engine.CurrentDeviceId)
             ?? devices.FirstOrDefault(device => device.IsVirtualCable)
             ?? devices.FirstOrDefault();
 
@@ -313,12 +337,22 @@ public sealed partial class MainWindow : Window
         }
 
         _config.OutputDeviceId = selected.Id;
-        _engine.SetOutput(selected.Id);
+
+        if (!string.Equals(_engine.CurrentDeviceId, selected.Id, StringComparison.Ordinal))
+        {
+            _engine.SetOutput(selected.Id);
+        }
+
+        ApplyMonitor();
         RefreshMic();
+        RefreshRoutingWarning();
+        SyncControls();
 
         StatusText.Text = selected.IsVirtualCable
             ? $"Playing into {selected.Name}"
             : "No virtual cable selected — other apps will not hear this. Pick a CABLE Input device.";
+
+        Log.Info($"startup: device list ready ({devices.Count} outputs)");
     }
 
     private void LoadSounds()
@@ -666,7 +700,9 @@ public sealed partial class MainWindow : Window
         var format = _engine.MixerFormat;
         if (format is null)
         {
-            Log.Warn("microphone not started: no output stream yet");
+            // First run: the output is still being opened, and the microphone is
+            // started again as soon as it is. Not a failure, so not a warning.
+            Log.Info("microphone waits for the output stream");
             return;
         }
 
@@ -1044,6 +1080,14 @@ public sealed partial class MainWindow : Window
     private void RefreshRoutingWarning()
     {
         _engine.RefreshDefaultOutput();
+
+        if (string.IsNullOrEmpty(_engine.CurrentDeviceId))
+        {
+            // Nothing is open yet (first run, before the device list arrives).
+            RoutingWarning.IsOpen = false;
+            return;
+        }
+
         var leaks = _engine.OutputIsDefault(_config.OutputDeviceId);
         RoutingWarning.IsOpen = leaks;
 
