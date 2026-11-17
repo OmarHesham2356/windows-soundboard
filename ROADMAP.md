@@ -31,9 +31,10 @@ Done when a trimmed clip ends where it was trimmed (not merely stops being
 	original file's playback byte for byte.
 
 Progress: trim, fades, gain and the waveform dialog are on `main` (right-click a
-sound → Edit clip…). A 6 s file trimmed to 1.0–2.5 s plays for 1.509 s. Still to
-do before this milestone closes: verify fades by ear, and keep the loop window on
-the trim (a looped clip restarts at the trim start already).
+sound → Edit clip…). A 6 s file trimmed to 1.0–2.5 s plays for 1.509 s, and a
+looped clip wraps at the trim start again (a 1.0 s window wrapped at 1.002 s and
+was still playing five seconds later). Still to do before this milestone closes:
+verify the fades by ear.
 
 ## v0.3 — Speed, pitch and cutting **[later]**
 

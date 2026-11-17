@@ -265,7 +265,8 @@ public sealed class AudioEngine : IDisposable
                 ISampleProvider source = reader;
 
                 // A resumed sound keeps its position; a trimmed one starts at the trim.
-                var start = Math.Max(startAtSeconds, clip?.StartSeconds ?? 0);
+                var clipStart = clip?.StartSeconds ?? 0;
+                var start = Math.Max(startAtSeconds, clipStart);
                 if (start > 0.05 && start < reader.TotalTime.TotalSeconds)
                 {
                     reader.CurrentTime = TimeSpan.FromSeconds(start);
@@ -298,19 +299,23 @@ public sealed class AudioEngine : IDisposable
                     };
                 }
 
+                // The window is measured from the clip's own start, not from a resumed
+                // position, so a wrap and a resume agree on where the trim ends.
                 var sampleRate = _mixer.WaveFormat.SampleRate;
                 var limitFrames = 0L;
-                if (clip is not null && clip.EndSeconds > start + 0.02)
+                if (clip is not null && clip.EndSeconds > clipStart + 0.02)
                 {
-                    limitFrames = (long)Math.Round((clip.EndSeconds - start) * sampleRate);
+                    limitFrames = (long)Math.Round((clip.EndSeconds - clipStart) * sampleRate);
                 }
+
+                var startFrame = (long)Math.Round((start - clipStart) * sampleRate);
 
                 var fadeIn = clip is null ? 0 : (int)Math.Clamp(clip.FadeInMilliseconds, 0, 5000);
                 var fadeOut = clip is null ? 0 : (int)Math.Clamp(clip.FadeOutMilliseconds, 0, 5000);
 
                 var item = new PlaybackItem(
                     path, reader, source, FadeMilliseconds, loop, gainDb, clip,
-                    TimeSpan.FromSeconds(start), limitFrames, fadeIn, fadeOut);
+                    TimeSpan.FromSeconds(clipStart), startFrame, limitFrames, fadeIn, fadeOut);
                 _playing.Add(item);
                 _mixer.AddMixerInput(item);
 
@@ -534,6 +539,7 @@ internal sealed class PlaybackItem : ISampleProvider
     private readonly long _fadeOutFrames;
     private volatile bool _stopping;
     private bool _finished;
+    private bool _wrapPending;
     private float _gain = 1f;
     private long _frames;
 
@@ -546,6 +552,7 @@ internal sealed class PlaybackItem : ISampleProvider
         double gainDb,
         ClipEdit? clip,
         TimeSpan startTime,
+        long startFrame,
         long limitFrames,
         int fadeInMilliseconds,
         int fadeOutMilliseconds)
@@ -556,6 +563,7 @@ internal sealed class PlaybackItem : ISampleProvider
         _loop = loop;
         _clip = clip;
         _startTime = startTime;
+        _frames = Math.Max(0, startFrame);
         _limitFrames = limitFrames;
         GainDb = gainDb;
         WaveFormat = source.WaveFormat;
@@ -604,6 +612,66 @@ internal sealed class PlaybackItem : ISampleProvider
     public void RequestStop() => _stopping = true;
 
     public int Read(float[] buffer, int offset, int count)
+    {
+        var produced = 0;
+        var guard = 0;
+
+        while (produced < count && guard++ < 512)
+        {
+            if (_finished)
+            {
+                break;
+            }
+
+            // A trim end reached on a looping clip wraps back to the trim start and
+            // keeps filling this same buffer, so the mixer never sees a short read
+            // and never treats the loop as the end of the stream.
+            if (_wrapPending && !Wrap())
+            {
+                break;
+            }
+
+            // A chunk can legitimately be empty when it starts exactly on the trim
+            // boundary; that is a wrap waiting to happen, not the end of the stream.
+            var read = ReadChunk(buffer, offset + produced, count - produced);
+            if (read == 0 && !_wrapPending)
+            {
+                break;
+            }
+
+            produced += read;
+
+            if (!_wrapPending)
+            {
+                break;
+            }
+        }
+
+        return produced;
+    }
+
+    /// <summary>Restarts a looping clip at its trim start; false when it cannot.</summary>
+    private bool Wrap()
+    {
+        _wrapPending = false;
+        if (!SeekToStart())
+        {
+            _finished = true;
+            NaturalEnd = !_stopping;
+            return false;
+        }
+
+        Loops++;
+        if (Loops == 1)
+        {
+            Log.Info($"looping {System.IO.Path.GetFileName(Path)}");
+        }
+
+        _frames = 0;
+        return true;
+    }
+
+    private int ReadChunk(float[] buffer, int offset, int count)
     {
         if (_finished)
         {
@@ -654,10 +722,19 @@ internal sealed class PlaybackItem : ISampleProvider
                 var remaining = _limitFrames - position;
                 if (remaining <= 0)
                 {
-                    // The trim has been reached: end here, like the file running out.
                     written = frame;
-                    _finished = true;
-                    NaturalEnd = !_stopping;
+                    if (_loop && !_stopping)
+                    {
+                        // A loop should wrap back to the trim start, not stop.
+                        _wrapPending = true;
+                    }
+                    else
+                    {
+                        // The trim has been reached: end here, like the file running out.
+                        _finished = true;
+                        NaturalEnd = !_stopping;
+                    }
+
                     break;
                 }
 
