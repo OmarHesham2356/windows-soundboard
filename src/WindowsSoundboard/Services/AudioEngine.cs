@@ -21,7 +21,7 @@ public sealed class AudioEngine : IDisposable
 {
     private const int FadeMilliseconds = 12;
 
-    private sealed record PausedSound(string Path, double PositionSeconds, double GainDb, bool Loop);
+    private sealed record PausedSound(string Path, double PositionSeconds, double GainDb, bool Loop, ClipEdit? Clip);
 
     private readonly object _gate = new();
     private readonly List<PlaybackItem> _playing = [];
@@ -237,14 +237,14 @@ public sealed class AudioEngine : IDisposable
         }
     }
 
-    public void Play(string path, TriggerMode mode, double gainDb = 0, bool loop = false)
-        => PlayCore(path, mode, gainDb, loop, startAtSeconds: 0);
+    public void Play(string path, TriggerMode mode, double gainDb = 0, bool loop = false, ClipEdit? clip = null)
+        => PlayCore(path, mode, gainDb, loop, startAtSeconds: 0, clip);
 
     /// <summary>Starts a held sound, replacing any copy already held for that file.</summary>
-    public void HoldStart(string path, double gainDb = 0, bool loop = false)
-        => PlayCore(path, TriggerMode.Stop, gainDb, loop, startAtSeconds: 0);
+    public void HoldStart(string path, double gainDb = 0, bool loop = false, ClipEdit? clip = null)
+        => PlayCore(path, TriggerMode.Stop, gainDb, loop, startAtSeconds: 0, clip);
 
-    private void PlayCore(string path, TriggerMode mode, double gainDb, bool loop, double startAtSeconds)
+    private void PlayCore(string path, TriggerMode mode, double gainDb, bool loop, double startAtSeconds, ClipEdit? clip)
     {
         try
         {
@@ -264,9 +264,11 @@ public sealed class AudioEngine : IDisposable
                 var reader = new AudioFileReader(path);
                 ISampleProvider source = reader;
 
-                if (startAtSeconds > 0.05 && startAtSeconds < reader.TotalTime.TotalSeconds)
+                // A resumed sound keeps its position; a trimmed one starts at the trim.
+                var start = Math.Max(startAtSeconds, clip?.StartSeconds ?? 0);
+                if (start > 0.05 && start < reader.TotalTime.TotalSeconds)
                 {
-                    reader.CurrentTime = TimeSpan.FromSeconds(startAtSeconds);
+                    reader.CurrentTime = TimeSpan.FromSeconds(start);
                 }
 
                 if (source.WaveFormat.Channels == 1 && _mixer.WaveFormat.Channels == 2)
@@ -287,7 +289,7 @@ public sealed class AudioEngine : IDisposable
                     return;
                 }
 
-                var totalGainDb = gainDb + _boostDb;
+                var totalGainDb = gainDb + _boostDb + (clip?.GainDb ?? 0);
                 if (Math.Abs(totalGainDb) > 0.05)
                 {
                     source = new VolumeSampleProvider(source)
@@ -296,11 +298,25 @@ public sealed class AudioEngine : IDisposable
                     };
                 }
 
-                var item = new PlaybackItem(path, reader, source, FadeMilliseconds, loop, gainDb);
+                var sampleRate = _mixer.WaveFormat.SampleRate;
+                var limitFrames = 0L;
+                if (clip is not null && clip.EndSeconds > start + 0.02)
+                {
+                    limitFrames = (long)Math.Round((clip.EndSeconds - start) * sampleRate);
+                }
+
+                var fadeIn = clip is null ? 0 : (int)Math.Clamp(clip.FadeInMilliseconds, 0, 5000);
+                var fadeOut = clip is null ? 0 : (int)Math.Clamp(clip.FadeOutMilliseconds, 0, 5000);
+
+                var item = new PlaybackItem(
+                    path, reader, source, FadeMilliseconds, loop, gainDb, clip,
+                    TimeSpan.FromSeconds(start), limitFrames, fadeIn, fadeOut);
                 _playing.Add(item);
                 _mixer.AddMixerInput(item);
+
                 Log.Info($"{_label}: play {Path.GetFileName(path)} ({mode}, {totalGainDb:+0.0;-0.0;0.0} dB" +
-                         $"{(loop ? ", loop" : string.Empty)}{(startAtSeconds > 0.05 ? $", from {startAtSeconds:0.0}s" : string.Empty)})");
+                         $"{(loop ? ", loop" : string.Empty)}{(startAtSeconds > 0.05 ? $", from {startAtSeconds:0.0}s" : string.Empty)}" +
+                         $"{(clip is null ? string.Empty : $", clip {clip.StartSeconds:0.0#}s-{(clip.EndSeconds > 0.02 ? clip.EndSeconds.ToString("0.0#") : "end")}s fade {fadeIn}/{fadeOut}ms")})");
             }
         }
         catch (Exception ex)
@@ -360,7 +376,7 @@ public sealed class AudioEngine : IDisposable
             _paused.Clear();
             foreach (var item in _playing)
             {
-                _paused.Add(new PausedSound(item.Path, item.PositionSeconds, item.GainDb, item.Loop));
+                _paused.Add(new PausedSound(item.Path, item.PositionSeconds, item.GainDb, item.Loop, item.Clip));
             }
 
             foreach (var item in _playing)
@@ -389,7 +405,7 @@ public sealed class AudioEngine : IDisposable
 
         foreach (var sound in resume)
         {
-            PlayCore(sound.Path, TriggerMode.Stop, sound.GainDb, sound.Loop, sound.PositionSeconds);
+            PlayCore(sound.Path, TriggerMode.Stop, sound.GainDb, sound.Loop, sound.PositionSeconds, sound.Clip);
         }
 
         Log.Info($"{_label}: resumed");
@@ -511,9 +527,15 @@ internal sealed class PlaybackItem : ISampleProvider
     private readonly AudioFileReader? _reader;
     private readonly bool _loop;
     private readonly float _fadeStep;
+    private readonly ClipEdit? _clip;
+    private readonly TimeSpan _startTime;
+    private readonly long _limitFrames;
+    private readonly long _fadeInFrames;
+    private readonly long _fadeOutFrames;
     private volatile bool _stopping;
     private bool _finished;
     private float _gain = 1f;
+    private long _frames;
 
     public PlaybackItem(
         string path,
@@ -521,16 +543,27 @@ internal sealed class PlaybackItem : ISampleProvider
         ISampleProvider source,
         int fadeMilliseconds,
         bool loop,
-        double gainDb)
+        double gainDb,
+        ClipEdit? clip,
+        TimeSpan startTime,
+        long limitFrames,
+        int fadeInMilliseconds,
+        int fadeOutMilliseconds)
     {
         Path = path;
         _reader = reader;
         _source = source;
         _loop = loop;
+        _clip = clip;
+        _startTime = startTime;
+        _limitFrames = limitFrames;
         GainDb = gainDb;
         WaveFormat = source.WaveFormat;
+
         var fadeSamples = Math.Max(1f, WaveFormat.SampleRate * fadeMilliseconds / 1000f);
         _fadeStep = 1f / fadeSamples;
+        _fadeInFrames = (long)(WaveFormat.SampleRate * Math.Max(0, fadeInMilliseconds) / 1000.0);
+        _fadeOutFrames = (long)(WaveFormat.SampleRate * Math.Max(0, fadeOutMilliseconds) / 1000.0);
     }
 
     public string Path { get; }
@@ -542,6 +575,9 @@ internal sealed class PlaybackItem : ISampleProvider
 
     /// <summary>True when this copy wraps instead of ending.</summary>
     public bool Loop => _loop;
+
+    /// <summary>The trim/gain this copy is playing with, if any.</summary>
+    public ClipEdit? Clip => _clip;
 
     /// <summary>Where the file has got to, in seconds.</summary>
     public double PositionSeconds
@@ -586,6 +622,9 @@ internal sealed class PlaybackItem : ISampleProvider
                 }
 
                 read = _source.Read(buffer, offset, count);
+
+                // A wrap restarts the trim window and the fade in.
+                _frames = 0;
             }
 
             if (read == 0)
@@ -596,31 +635,66 @@ internal sealed class PlaybackItem : ISampleProvider
             }
         }
 
-        if (!_stopping)
-        {
-            return read;
-        }
-
         var channels = WaveFormat.Channels;
         var frames = read / channels;
+        var written = frames;
+
         for (var frame = 0; frame < frames; frame++)
         {
-            _gain -= _fadeStep;
-            var start = offset + (frame * channels);
-            if (_gain <= 0f)
+            var position = _frames + frame;
+            var envelope = 1f;
+
+            if (_fadeInFrames > 0 && position < _fadeInFrames)
             {
-                Array.Clear(buffer, start, read - (frame * channels));
-                _finished = true;
-                return frame * channels;
+                envelope = position / (float)_fadeInFrames;
             }
 
+            if (_limitFrames > 0)
+            {
+                var remaining = _limitFrames - position;
+                if (remaining <= 0)
+                {
+                    // The trim has been reached: end here, like the file running out.
+                    written = frame;
+                    _finished = true;
+                    NaturalEnd = !_stopping;
+                    break;
+                }
+
+                if (_fadeOutFrames > 0 && remaining < _fadeOutFrames)
+                {
+                    envelope *= remaining / (float)_fadeOutFrames;
+                }
+            }
+
+            if (_stopping)
+            {
+                _gain -= _fadeStep;
+                if (_gain <= 0f)
+                {
+                    written = frame;
+                    _finished = true;
+                    break;
+                }
+
+                envelope *= _gain;
+            }
+
+            var start = offset + (frame * channels);
             for (var channel = 0; channel < channels; channel++)
             {
-                buffer[start + channel] *= _gain;
+                buffer[start + channel] *= envelope;
             }
         }
 
-        return read;
+        var produced = written * channels;
+        if (produced < read)
+        {
+            Array.Clear(buffer, offset + produced, read - produced);
+        }
+
+        _frames += written;
+        return produced;
     }
 
     private bool SeekToStart()
@@ -632,7 +706,7 @@ internal sealed class PlaybackItem : ISampleProvider
                 return false;
             }
 
-            _reader.CurrentTime = TimeSpan.Zero;
+            _reader.CurrentTime = _startTime;
             return true;
         }
         catch

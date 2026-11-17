@@ -199,6 +199,7 @@ public sealed partial class MainWindow : Window
         foreach (var sound in _sounds)
         {
             sound.Mode = _config.ModeFor(sound.Id);
+            sound.Clip = _config.ClipFor(sound.Id);
         }
 
         RefreshRoutingWarning();
@@ -375,6 +376,7 @@ public sealed partial class MainWindow : Window
             }
 
             item.Mode = _config.ModeFor(item.Id);
+            item.Clip = _config.ClipFor(item.Id);
             _sounds.Add(item);
         }
 
@@ -552,10 +554,10 @@ public sealed partial class MainWindow : Window
         _lastPlayedPath = item.Path;
         var mode = _config.Mode.IsHold() ? TriggerMode.Stop : _config.Mode;
         var loop = item.Mode == PlayMode.Loop;
-        _engine.Play(item.Path, mode, item.GainDb, loop);
+        _engine.Play(item.Path, mode, item.GainDb, loop, item.Clip);
         if (_monitorActive)
         {
-            _monitor.Play(item.Path, mode, item.GainDb, loop);
+            _monitor.Play(item.Path, mode, item.GainDb, loop, item.Clip);
         }
     }
 
@@ -771,6 +773,72 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Opens the clip editor for one sound. The waveform costs a decode, so it is
+    /// measured off the UI thread and only for the file being edited.
+    /// </summary>
+    private async Task EditClipAsync(SoundItem item)
+    {
+        var (peaks, seconds) = await Task.Run(() => Waveform.Measure(item.Path));
+        if (seconds <= 0.05)
+        {
+            StatusText.Text = "That file could not be read.";
+            return;
+        }
+
+        var dialog = new ClipDialog(
+            item.Name,
+            peaks,
+            seconds,
+            item.Clip,
+            preview => _engine.Play(item.Path, TriggerMode.Stop, item.GainDb, loop: false, preview))
+        {
+            XamlRoot = Content.XamlRoot,
+        };
+
+        var choice = await dialog.ShowAsync();
+        if (choice == ContentDialogResult.None)
+        {
+            return;
+        }
+
+        if (dialog.Cleared)
+        {
+            ClearClip(item);
+            return;
+        }
+
+        _config.SetClip(item.Id, dialog.Result);
+        item.Clip = _config.ClipFor(item.Id);
+
+        // A trim changes what is actually heard, so the old measurement is stale.
+        _config.Loudness.Remove(item.Id);
+        ConfigStore.Save(_config);
+
+        if (item.Clip is not null)
+        {
+            Log.Info($"clip set: {item.Name} {item.Clip.Summary} (" +
+                     $"{item.Clip.StartSeconds:0.00}-{(item.Clip.EndSeconds > 0 ? item.Clip.EndSeconds.ToString("0.00") : "end")}s, " +
+                     $"gain {item.Clip.GainDb:+0.0;-0.0;0.0} dB, fade {item.Clip.FadeInMilliseconds:0}/{item.Clip.FadeOutMilliseconds:0} ms)");
+        }
+
+        StatusText.Text = item.Clip is null ? $"{item.Name} plays whole." : $"{item.Name}: {item.Clip.Summary}.";
+        _libraryVersion++;
+        _ = AnalyseLoudnessAsync(_libraryVersion);
+    }
+
+    private void ClearClip(SoundItem item)
+    {
+        _config.SetClip(item.Id, null);
+        item.Clip = null;
+        _config.Loudness.Remove(item.Id);
+        ConfigStore.Save(_config);
+        Log.Info($"clip cleared: {item.Name}");
+        StatusText.Text = $"{item.Name} plays whole.";
+        _libraryVersion++;
+        _ = AnalyseLoudnessAsync(_libraryVersion);
+    }
+
     private void OnSoundRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if ((e.OriginalSource as FrameworkElement)?.DataContext is not SoundItem item)
@@ -818,6 +886,17 @@ public sealed partial class MainWindow : Window
         }
 
         flyout.Items.Add(modeMenu);
+
+        var clipItem = new MenuFlyoutItem { Text = "Edit clip…" };
+        clipItem.Click += async (_, _) => await EditClipAsync(item);
+        flyout.Items.Add(clipItem);
+
+        if (item.Clip is not null)
+        {
+            var resetClip = new MenuFlyoutItem { Text = "Reset clip edit" };
+            resetClip.Click += (_, _) => ClearClip(item);
+            flyout.Items.Add(resetClip);
+        }
 
         var reveal = new MenuFlyoutItem { Text = "Show in folder" };
         reveal.Click += (_, _) =>
@@ -921,10 +1000,10 @@ public sealed partial class MainWindow : Window
             {
                 _lastPlayedPath = item.Path;
                 var loop = _config.Mode.LoopsWhileHeld() || item.Mode == PlayMode.Loop;
-                _engine.HoldStart(item.Path, item.GainDb, loop);
+                _engine.HoldStart(item.Path, item.GainDb, loop, item.Clip);
                 if (_monitorActive)
                 {
-                    _monitor.HoldStart(item.Path, item.GainDb, loop);
+                    _monitor.HoldStart(item.Path, item.GainDb, loop, item.Clip);
                 }
             }
             else

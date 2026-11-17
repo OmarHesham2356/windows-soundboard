@@ -11,6 +11,7 @@ public sealed class SoundItem : INotifyPropertyChanged
     private bool _isWaitingForKey;
     private double _gainDb;
     private PlayMode _mode = PlayMode.Default;
+    private ClipEdit? _clip;
 
     public SoundItem(string id, string path, string name)
     {
@@ -68,6 +69,24 @@ public sealed class SoundItem : INotifyPropertyChanged
         PlayMode.Continue => "continue",
         _ => string.Empty,
     };
+
+    /// <summary>Trim, fades and gain for this sound; null when it plays untouched.</summary>
+    public ClipEdit? Clip
+    {
+        get => _clip;
+        set
+        {
+            _clip = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ClipText));
+            OnPropertyChanged(nameof(ClipVisibility));
+        }
+    }
+
+    public string ClipText => _clip?.Summary ?? string.Empty;
+
+    public Microsoft.UI.Xaml.Visibility ClipVisibility
+        => _clip is null ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
 
     /// <summary>Gain applied on playback so every sound lands at the same level.</summary>
     public double GainDb

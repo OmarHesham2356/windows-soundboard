@@ -73,6 +73,24 @@ public sealed class AppConfig
     /// <summary>Measured gains, so a file is only analysed once.</summary>
     public Dictionary<string, LoudnessCacheEntry> Loudness { get; set; } = new();
 
+    /// <summary>Per-sound trims, fades and gains; the audio files stay untouched.</summary>
+    public Dictionary<string, ClipEdit> Clips { get; set; } = new();
+
+    /// <summary>The edit a sound actually plays with, or null when it is untouched.</summary>
+    public ClipEdit? ClipFor(string soundId)
+        => Clips.TryGetValue(soundId, out var clip) && !clip.IsEmpty ? clip : null;
+
+    public void SetClip(string soundId, ClipEdit? clip)
+    {
+        if (clip is null || clip.IsEmpty)
+        {
+            Clips.Remove(soundId);
+            return;
+        }
+
+        Clips[soundId] = clip;
+    }
+
     /// <summary>The play mode a sound actually uses: its own, or the board default.</summary>
     public PlayMode ModeFor(string soundId)
         => PlayModes.TryGetValue(soundId, out var mode) ? mode : PlayMode;
@@ -138,7 +156,8 @@ public static class ConfigStore
 
             Log.Info($"config loaded: {config.Hotkeys.Count} hotkeys, {config.ControlHotkeys.Count} control " +
                      $"hotkeys, mode {config.Mode}, default play mode {config.PlayMode}, " +
-                     $"{config.PlayModes.Count} per-sound play modes, folder '{config.SoundsFolder}'");
+                     $"{config.PlayModes.Count} per-sound play modes, {config.Clips.Count} edited clips, " +
+                     $"folder '{config.SoundsFolder}'");
             return config;
         }
         catch (Exception ex)
