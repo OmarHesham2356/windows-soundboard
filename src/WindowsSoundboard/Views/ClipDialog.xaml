@@ -29,8 +29,26 @@
                     PointerMoved="OnWavePointerMoved"
                     PointerPressed="OnWavePointerPressed"
                     PointerReleased="OnWavePointerReleased"
+                    PointerWheelChanged="OnWavePointerWheel"
                     SizeChanged="OnWaveSizeChanged" />
             </Border>
+
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="84" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Zoom" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <Slider
+                    x:Name="ZoomSlider"
+                    Grid.Column="1"
+                    Maximum="32"
+                    Minimum="1"
+                    StepFrequency="0.5"
+                    ValueChanged="OnZoomChanged" />
+                <TextBlock x:Name="ZoomText" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
+            </Grid>
 
             <TextBlock x:Name="RangeText" FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
 
@@ -179,7 +197,7 @@
                     VerticalAlignment="Center"
                     FontSize="12"
                     Opacity="0.6"
-                    Text="Drag a marker on the waveform to trim. The file itself is never changed — Reset restores it." />
+                    Text="Drag a marker on the waveform to trim. Scroll to move along the sound, Ctrl+scroll to zoom. The file itself is never changed — Reset restores it." />
             </StackPanel>
         </StackPanel>
     </ScrollViewer>

@@ -13,7 +13,7 @@ public static class Waveform
     /// Returns <paramref name="buckets"/> peaks in the range 0..1 and the file's
     /// duration. An unreadable file returns an empty array.
     /// </summary>
-    public static (float[] Peaks, double Seconds) Measure(string path, int buckets = 480)
+    public static (float[] Peaks, double Seconds) Measure(string path, int buckets = 2000)
     {
         buckets = Math.Clamp(buckets, 32, 2000);
 

@@ -164,7 +164,8 @@ public sealed class HotkeyService : IDisposable
             if (isDown || isUp)
             {
                 var data = Marshal.PtrToStructure<Native.KbdLlHookStruct>(lParam);
-                var handled = isDown ? HandleDown(data.VirtualKeyCode) : HandleUp(data.VirtualKeyCode);
+                var key = Normalise(data);
+                var handled = isDown ? HandleDown(key) : HandleUp(key);
                 if (handled)
                 {
                     return 1;
@@ -310,6 +311,41 @@ public sealed class HotkeyService : IDisposable
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// The key the user actually pressed. With NumLock off the numpad reports the
+    /// navigation keys — numpad 7 arrives as Home — so a "Numpad7" binding would never
+    /// match. The scan code plus the extended flag tell the two keyboards apart, which
+    /// is the same distinction Windows itself uses.
+    /// </summary>
+    private static uint Normalise(Native.KbdLlHookStruct data)
+    {
+        const uint Extended = 0x01;
+        const int NumLock = 0x90;
+
+        if ((data.Flags & Extended) != 0 || (Native.GetKeyState(NumLock) & 1) != 0)
+        {
+            return data.VirtualKeyCode;
+        }
+
+        return data.ScanCode switch
+        {
+            0x47 => 0x67, // 7
+            0x48 => 0x68, // 8
+            0x49 => 0x69, // 9
+            0x4A => 0x6D, // subtract
+            0x4B => 0x64, // 4
+            0x4C => 0x65, // 5
+            0x4D => 0x66, // 6
+            0x4E => 0x6B, // add
+            0x4F => 0x61, // 1
+            0x50 => 0x62, // 2
+            0x51 => 0x63, // 3
+            0x52 => 0x60, // 0
+            0x53 => 0x6E, // decimal
+            _ => data.VirtualKeyCode,
+        };
     }
 
     private static bool IsModifier(uint virtualKey)

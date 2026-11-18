@@ -29,6 +29,6 @@
             FontSize="12"
             Opacity="0.6"
             TextWrapping="Wrap"
-            Text="Hold Ctrl, Alt, Shift or Win and then press the last key — combinations work, so Ctrl+Shift+F1 is a valid hotkey. Escape cancels recording, Clear removes the hotkey." />
+            Text="Hold Ctrl, Alt, Shift or Win and then press the last key — combinations work, so Ctrl+Shift+F1 is a valid hotkey. Numpad keys work too, whether or not NumLock is on. Escape cancels recording, Clear removes the hotkey." />
     </StackPanel>
 </ContentDialog>

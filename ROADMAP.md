@@ -35,7 +35,7 @@ scissors button on a sound, or right-click a sound → Edit clip…). A 6 s file
 trimmed to 1.0–2.5 s plays for 1.509 s, a looped clip wraps at the trim start
 again, and the fades were confirmed by ear.
 
-## v0.3 — Speed, pitch and cutting **[next]**
+## v0.3 — Speed, pitch and cutting **[done]**
 
 - Playback speed / pitch control per sound (the chipmunk and slowed-reverb toys).
 - Cut a section out of the middle of a clip.
@@ -48,10 +48,15 @@ Progress: speed and pitch are per sound and stored in the config (`Speed`,
 `PitchSemitones`); speed is a varispeed resample, pitch is NAudio's SMB shifter,
 so speed changes tempo and pitch together while pitch alone keeps the length.
 Cutting writes a new `<name> (cut).wav` next to the original and reloads the
-library. The trim markers can be dragged on the waveform. Still open: zooming the
-waveform.
+library. The trim markers can be dragged on the waveform, and the waveform zooms
+1×–32× (zoom slider, Ctrl+scroll around the pointer, scroll or drag to pan) so a
+long file can be trimmed to the hundredth of a second. Sounds can be deleted from
+the card, the list or the right-click menu: two deliberate clicks, then the file
+goals to the Recycle Bin and its hotkey, play mode and clip edit are forgotten.
+Hotkeys accept Ctrl/Alt/Shift/Win combinations and numpad keys, with NumLock on or
+off. Closed.
 
-## v0.4 — A library that scales **[later]**
+## v0.4 — A library that scales **[next]**
 
 - Drag and drop files onto the window: copy into the sounds folder, skip duplicates.
 - Search / filter box; sort by name, duration or date.

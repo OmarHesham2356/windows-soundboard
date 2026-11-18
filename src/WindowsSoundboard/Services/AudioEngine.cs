@@ -817,5 +817,18 @@ internal sealed class PlaybackItem : ISampleProvider
         }
     }
 
-    public void Dispose() => (_source as IDisposable)?.Dispose();
+    /// <summary>
+    /// Releases the file handle as well as the provider chain. The reader is separate
+    /// from the chain as soon as gain, trim or speed wrap it, so disposing only the
+    /// chain used to leave the file open until the app exited — which made a played
+    /// sound impossible to delete or move while the board was running.
+    /// </summary>
+    public void Dispose()
+    {
+        (_source as IDisposable)?.Dispose();
+        if (!ReferenceEquals(_source, _reader))
+        {
+            _reader?.Dispose();
+        }
+    }
 }

@@ -22,14 +22,22 @@ public sealed partial class ClipDialog : ContentDialog
         None,
         Start,
         End,
+        Pan,
     }
 
     private readonly float[] _peaks;
     private readonly double _seconds;
     private readonly Action<ClipEdit>? _preview;
+    private const double MaxZoom = 32;
+
     private bool _ready;
     private DragTarget _drag;
     private uint _dragPointer;
+    private double _viewStart;
+    private double _viewSpan;
+    private double _panStart;
+    private double _panX;
+    private bool _zoomLock;
 
     public ClipEdit? Result { get; private set; }
 
@@ -44,6 +52,7 @@ public sealed partial class ClipDialog : ContentDialog
 
         _peaks = peaks;
         _seconds = Math.Max(seconds, 0.1);
+        _viewSpan = _seconds;
         _preview = preview;
 
         HeaderText.Text = $"{name} — {_seconds:0.0#}s";
@@ -114,6 +123,7 @@ public sealed partial class ClipDialog : ContentDialog
             EndSlider.Value = Math.Min(_seconds, e.NewValue + 0.05);
         }
 
+        EnsureVisible(e.NewValue);
         SyncCutBounds();
         UpdateTexts();
         Draw();
@@ -126,6 +136,7 @@ public sealed partial class ClipDialog : ContentDialog
             return;
         }
 
+        EnsureVisible(e.NewValue);
         SyncCutBounds();
         UpdateTexts();
         Draw();
@@ -234,6 +245,9 @@ public sealed partial class ClipDialog : ContentDialog
         SpeedText.Text = $"{SpeedSlider.Value:0.00}×";
         PitchText.Text = $"{PitchSlider.Value:+0;-0;0} st";
 
+        var zoom = _seconds / Math.Max(_viewSpan, 0.001);
+        ZoomText.Text = $"{zoom:0.0}×";
+
         var played = EndSlider.Value - StartSlider.Value;
         var speed = Math.Max(0.1, SpeedSlider.Value);
         var length = played > 0 ? $" ({played:0.00}s" : string.Empty;
@@ -245,6 +259,11 @@ public sealed partial class ClipDialog : ContentDialog
         RangeText.Text = $"Playing {StartText.Text} → {EndText.Text} of {_seconds:0.0#}s" +
                          (length.Length > 0 ? length + ")" : string.Empty);
 
+        if (zoom > 1.05)
+        {
+            RangeText.Text += $" · showing {_viewStart:0.00}–{ViewEnd:0.00}s";
+        }
+
         CutFromText.Text = $"{CutFromSlider.Value:0.00}s";
         CutToText.Text = $"{CutToSlider.Value:0.00}s";
 
@@ -252,6 +271,119 @@ public sealed partial class ClipDialog : ContentDialog
         CutHintText.Text = cutLength > 0
             ? $"Removes {cutLength:0.00}s, keeps {(Math.Max(0, played) - cutLength):0.00}s."
             : "Pick the range to remove.";
+    }
+
+    // ---- Zooming the waveform -------------------------------------------------------
+
+    private double ViewEnd => Math.Min(_seconds, _viewStart + _viewSpan);
+
+    private void ClampView()
+    {
+        var minSpan = Math.Max(0.05, _seconds / MaxZoom);
+        _viewSpan = Math.Clamp(_viewSpan, minSpan, _seconds);
+        _viewStart = Math.Clamp(_viewStart, 0, Math.Max(0, _seconds - _viewSpan));
+    }
+
+    /// <summary>Where a pointer x lands in the file, inside the visible window.</summary>
+    private double SecondsAt(double x, double width) =>
+        Math.Clamp(_viewStart + (Math.Clamp(x, 0, width) / Math.Max(width, 1)) * _viewSpan, 0, _seconds);
+
+    /// <summary>The screen x of a time in the file; can sit off the canvas when zoomed.</summary>
+    private double ScreenX(double seconds, double width) =>
+        _viewSpan <= 0 ? 0 : (seconds - _viewStart) / _viewSpan * width;
+
+    /// <summary>Scrolls only as far as needed to put a time back on screen.</summary>
+    private void EnsureVisible(double seconds)
+    {
+        if (seconds < _viewStart)
+        {
+            _viewStart = seconds - (_viewSpan * 0.1);
+        }
+        else if (seconds > ViewEnd)
+        {
+            _viewStart = seconds - (_viewSpan * 0.9);
+        }
+        else
+        {
+            return;
+        }
+
+        ClampView();
+        SyncZoom();
+        Draw();
+    }
+
+    /// <summary>Writes the window back to the zoom slider without re-entering its handler.</summary>
+    private void SyncZoom()
+    {
+        _zoomLock = true;
+        ZoomSlider.Value = Math.Clamp(_seconds / Math.Max(_viewSpan, 0.001), 1, MaxZoom);
+        _zoomLock = false;
+    }
+
+    private void OnZoomChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (!_ready || _zoomLock)
+        {
+            return;
+        }
+
+        var span = Math.Clamp(_seconds / Math.Max(e.NewValue, 1), _seconds / MaxZoom, _seconds);
+
+        // Coming out of the whole file, zoom towards the trim; once zoomed in, keep the
+        // middle of what is already on screen instead.
+        var anchor = _viewSpan >= _seconds - 0.001
+            ? (StartSlider.Value + EndSlider.Value) / 2
+            : _viewStart + (_viewSpan / 2);
+
+        _viewStart = anchor - (span / 2);
+        _viewSpan = span;
+        ClampView();
+        SyncZoom();
+        UpdateTexts();
+        Draw();
+    }
+
+    private void OnWavePointerWheel(object sender, PointerRoutedEventArgs e)
+    {
+        var width = WaveCanvas.ActualWidth;
+        if (width <= 1 || _seconds <= 0)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(WaveCanvas);
+        var delta = point.Properties.MouseWheelDelta;
+        if (delta == 0)
+        {
+            return;
+        }
+
+        if (e.KeyModifiers.HasFlag(Windows.System.VirtualKeyModifiers.Control))
+        {
+            // Zoom around the pointer, so the part under the cursor stays put.
+            var anchor = SecondsAt(point.Position.X, width);
+            var factor = delta > 0 ? 0.85 : 1 / 0.85;
+            var span = Math.Clamp(_viewSpan * factor, _seconds / MaxZoom, _seconds);
+            _viewStart = anchor - ((point.Position.X / width) * span);
+            _viewSpan = span;
+            ClampView();
+            SyncZoom();
+        }
+        else if (_viewSpan < _seconds - 0.001)
+        {
+            _viewStart -= Math.Sign(delta) * _viewSpan * 0.15;
+            ClampView();
+        }
+        else
+        {
+            // Nothing to pan: let the dialog scroll instead.
+            return;
+        }
+
+        UpdateTexts();
+        Draw();
+        e.Handled = true;
     }
 
     // ---- Dragging the trim markers -------------------------------------------------
@@ -265,15 +397,29 @@ public sealed partial class ClipDialog : ContentDialog
         }
 
         var x = e.GetCurrentPoint(WaveCanvas).Position.X;
-        var toStart = Math.Abs(x - (width * (StartSlider.Value / _seconds)));
-        var toEnd = Math.Abs(x - (width * (EndSlider.Value / _seconds)));
+        var startX = ScreenX(StartSlider.Value, width);
+        var endX = ScreenX(EndSlider.Value, width);
 
-        if (Math.Min(toStart, toEnd) > 18)
+        // Only markers that are actually on screen can be grabbed.
+        var toStart = startX >= -2 && startX <= width + 2 ? Math.Abs(x - startX) : double.MaxValue;
+        var toEnd = endX >= -2 && endX <= width + 2 ? Math.Abs(x - endX) : double.MaxValue;
+
+        if (Math.Min(toStart, toEnd) <= 18)
+        {
+            _drag = toStart <= toEnd ? DragTarget.Start : DragTarget.End;
+        }
+        else if (_viewSpan < _seconds - 0.001)
+        {
+            // Empty space: drag the view along the file.
+            _drag = DragTarget.Pan;
+            _panX = x;
+            _panStart = _viewStart;
+        }
+        else
         {
             return;
         }
 
-        _drag = toStart <= toEnd ? DragTarget.Start : DragTarget.End;
         _dragPointer = e.Pointer.PointerId;
         WaveCanvas.CapturePointer(e.Pointer);
         e.Handled = true;
@@ -292,7 +438,41 @@ public sealed partial class ClipDialog : ContentDialog
             return;
         }
 
-        var seconds = Math.Clamp(e.GetCurrentPoint(WaveCanvas).Position.X / width, 0, 1) * _seconds;
+        var x = e.GetCurrentPoint(WaveCanvas).Position.X;
+
+        if (_drag == DragTarget.Pan)
+        {
+            _viewStart = _panStart - (((x - _panX) / width) * _viewSpan);
+            ClampView();
+            UpdateTexts();
+            Draw();
+            e.Handled = true;
+            return;
+        }
+
+        // Zoomed in: nudge the view when the pointer reaches an edge, so a marker can be
+        // dragged past the edge of the screen instead of sticking to it.
+        var panned = false;
+        if (_viewSpan < _seconds - 0.001)
+        {
+            if (x < 24)
+            {
+                _viewStart -= _viewSpan * 0.02;
+                panned = true;
+            }
+            else if (x > width - 24)
+            {
+                _viewStart += _viewSpan * 0.02;
+                panned = true;
+            }
+
+            if (panned)
+            {
+                ClampView();
+            }
+        }
+
+        var seconds = SecondsAt(x, width);
         if (_drag == DragTarget.Start)
         {
             StartSlider.Value = Math.Clamp(seconds, 0, Math.Max(0, EndSlider.Value - 0.02));
@@ -300,6 +480,11 @@ public sealed partial class ClipDialog : ContentDialog
         else
         {
             EndSlider.Value = Math.Clamp(seconds, Math.Min(_seconds, StartSlider.Value + 0.02), _seconds);
+        }
+
+        if (panned)
+        {
+            Draw();
         }
 
         e.Handled = true;
@@ -344,47 +529,71 @@ public sealed partial class ClipDialog : ContentDialog
             Fill = new SolidColorBrush(Color.FromArgb(160, accent.R, accent.G, accent.B)),
         };
 
-        var points = new PointCollection();
+        // One column per pixel of the visible window. Each takes the loudest stored peak
+        // it covers, so zooming in reveals detail rather than stretching a few buckets.
         var count = _peaks.Length;
-        for (var i = 0; i < count; i++)
+        var columns = Math.Max(2, (int)Math.Round(width));
+        var columnPeaks = new float[columns];
+        for (var i = 0; i < columns; i++)
         {
-            var x = width * i / (count - 1.0);
-            var peak = Math.Clamp(_peaks[i], 0f, 1f);
-            points.Add(new Point(x, middle - (peak * (middle - 4))));
+            var from = _viewStart + (_viewSpan * i / columns);
+            var to = _viewStart + (_viewSpan * (i + 1) / columns);
+            var first = (int)Math.Clamp(from / _seconds * count, 0, count - 1);
+            var last = (int)Math.Clamp(to / _seconds * count, 0, count - 1);
+            var peak = 0f;
+            for (var b = first; b <= last; b++)
+            {
+                peak = Math.Max(peak, _peaks[b]);
+            }
+
+            columnPeaks[i] = Math.Clamp(peak, 0f, 1f);
         }
 
-        for (var i = count - 1; i >= 0; i--)
+        var points = new PointCollection();
+        for (var i = 0; i < columns; i++)
         {
-            var x = width * i / (count - 1.0);
-            var peak = Math.Clamp(_peaks[i], 0f, 1f);
-            points.Add(new Point(x, middle + (peak * (middle - 4))));
+            var x = width * (i + 0.5) / columns;
+            points.Add(new Point(x, middle - (columnPeaks[i] * (middle - 4))));
+        }
+
+        for (var i = columns - 1; i >= 0; i--)
+        {
+            var x = width * (i + 0.5) / columns;
+            points.Add(new Point(x, middle + (columnPeaks[i] * (middle - 4))));
         }
 
         shape.Points = points;
         WaveCanvas.Children.Add(shape);
 
         // Shade what will not be played.
-        var startRatio = _seconds > 0 ? Math.Clamp(StartSlider.Value / _seconds, 0, 1) : 0;
-        var endRatio = _seconds > 0 ? Math.Clamp(EndSlider.Value / _seconds, 0, 1) : 1;
+        var startX = Math.Clamp(ScreenX(StartSlider.Value, width), 0, width);
+        var endX = Math.Clamp(ScreenX(EndSlider.Value, width), 0, width);
         var dim = new SolidColorBrush(Color.FromArgb(140, 0, 0, 0));
 
-        AddShade(0, width * startRatio, height, dim);
-        AddShade(width * endRatio, width * (1 - endRatio), height, dim);
+        AddShade(0, startX, height, dim);
+        AddShade(endX, width - endX, height, dim);
 
-        // The cut range, when it is inside the played window.
-        var cutFromRatio = _seconds > 0 ? Math.Clamp(CutFromSlider.Value / _seconds, 0, 1) : 0;
-        var cutToRatio = _seconds > 0 ? Math.Clamp(CutToSlider.Value / _seconds, 0, 1) : 0;
-        if (cutToRatio > cutFromRatio)
+        // The cut range, where it falls inside the visible window.
+        var cutFromX = Math.Clamp(ScreenX(CutFromSlider.Value, width), 0, width);
+        var cutToX = Math.Clamp(ScreenX(CutToSlider.Value, width), 0, width);
+        if (cutToX > cutFromX)
         {
             AddShade(
-                width * cutFromRatio,
-                width * (cutToRatio - cutFromRatio),
+                cutFromX,
+                cutToX - cutFromX,
                 height,
                 new SolidColorBrush(Color.FromArgb(70, 255, 90, 90)));
         }
 
-        AddMarker(width * startRatio, height, accent);
-        AddMarker(width * endRatio, height, accent);
+        if (startX >= 0 && startX <= width)
+        {
+            AddMarker(startX, height, accent);
+        }
+
+        if (endX >= 0 && endX <= width)
+        {
+            AddMarker(endX, height, accent);
+        }
     }
 
     private void AddShade(double left, double shadeWidth, double height, Brush brush)

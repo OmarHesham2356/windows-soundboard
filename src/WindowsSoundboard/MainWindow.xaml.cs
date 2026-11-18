@@ -946,6 +946,11 @@ public sealed partial class MainWindow : Window
         };
         flyout.Items.Add(reveal);
 
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        var deleteItem = new MenuFlyoutItem { Text = "Delete sound…" };
+        deleteItem.Click += async (_, _) => await DeleteSoundAsync(item);
+        flyout.Items.Add(deleteItem);
+
         if (sender is FrameworkElement element)
         {
             flyout.ShowAt(element, new FlyoutShowOptions { Position = e.GetPosition(element) });
@@ -965,6 +970,121 @@ public sealed partial class MainWindow : Window
         if ((sender as FrameworkElement)?.DataContext is SoundItem item)
         {
             _ = EditHotkeyAsync(item);
+        }
+    }
+
+    private void OnDeleteClicked(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is SoundItem item)
+        {
+            _ = DeleteSoundAsync(item);
+        }
+    }
+
+    /// <summary>
+    /// Removes a sound from the board and sends its file to the Recycle Bin, so a
+    /// mistaken click is still undoable from Windows. Everything the config held for
+    /// it goes too, otherwise a later file with the same name would inherit the
+    /// hotkey or clip edit of a sound that no longer exists.
+    /// </summary>
+    private async Task DeleteSoundAsync(SoundItem item)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "Delete this sound?",
+            Content = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Text = $"{item.Name}\n\n{Path.GetFileName(item.Path)} goes to the Recycle Bin, " +
+                       "and its hotkey, play mode and clip edit are forgotten.",
+            },
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        // Logged on both sides so a deletion in the log can always be traced to a
+        // confirmed click, never to a timer or a stray keystroke.
+        Log.Info($"delete asked: {item.Name}");
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            Log.Info($"delete cancelled: {item.Name}");
+            return;
+        }
+
+        // A file that is still open for playback cannot be deleted, so stop this one
+        // first rather than failing with a sharing violation.
+        if (item.IsPlaying)
+        {
+            _engine.HoldStop(item.Path);
+            if (_monitorActive)
+            {
+                _monitor.StopAll();
+            }
+
+            item.IsPlaying = false;
+        }
+
+        // Stopping fades out and releases the reader a few milliseconds later, and the
+        // Recycle Bin API raises the shell's own error prompt on a locked file, which
+        // would hang the dialog. So wait for the file to be free before asking.
+        for (var attempt = 0; attempt < 30 && IsFileBusy(item.Path); attempt++)
+        {
+            await Task.Delay(100);
+        }
+
+        if (IsFileBusy(item.Path))
+        {
+            Log.Warn($"delete skipped, still open elsewhere: {item.Name}");
+            StatusText.Text = $"{item.Name} is still open in another app, so it was not deleted.";
+            return;
+        }
+
+        try
+        {
+            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                item.Path,
+                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"deleting {item.Name} failed", ex);
+            StatusText.Text = $"{item.Name} could not be deleted — it may be open in another app.";
+            return;
+        }
+
+        _config.Hotkeys.Remove(item.Id);
+        _config.PlayModes.Remove(item.Id);
+        _config.SetClip(item.Id, null);
+        _config.Loudness.Remove(item.Id);
+        ConfigStore.Save(_config);
+
+        LoadSounds();
+        StatusText.Text = $"{item.Name} deleted.";
+        Log.Info($"sound deleted: {item.Name}");
+    }
+
+    /// <summary>True while any process, including this one, still holds the file open.</summary>
+    private static bool IsFileBusy(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+            return false;
+        }
+        catch (FileNotFoundException)
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true;
         }
     }
 
