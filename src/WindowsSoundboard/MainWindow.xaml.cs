@@ -918,6 +918,14 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void OnEditClipClicked(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is SoundItem item)
+        {
+            _ = EditClipAsync(item);
+        }
+    }
+
     private void OnAssignClicked(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is SoundItem item)

@@ -193,18 +193,31 @@
                                 </Grid>
                             </Button>
 
-                            <Button
-                                Width="28"
-                                Height="28"
-                                Padding="0"
+                            <StackPanel
+                                Orientation="Horizontal"
                                 HorizontalAlignment="Right"
-                                VerticalAlignment="Top"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                Click="OnAssignClicked"
-                                ToolTipService.ToolTip="Set hotkey">
-                                <FontIcon Glyph="&#xE765;" FontSize="12" />
-                            </Button>
+                                VerticalAlignment="Top">
+                                <Button
+                                    Width="28"
+                                    Height="28"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Click="OnEditClipClicked"
+                                    ToolTipService.ToolTip="Edit clip: trim, fade and gain">
+                                    <FontIcon Glyph="&#xE8C6;" FontSize="12" />
+                                </Button>
+                                <Button
+                                    Width="28"
+                                    Height="28"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Click="OnAssignClicked"
+                                    ToolTipService.ToolTip="Set hotkey">
+                                    <FontIcon Glyph="&#xE765;" FontSize="12" />
+                                </Button>
+                            </StackPanel>
                         </Grid>
                     </DataTemplate>
                 </GridView.ItemTemplate>
@@ -223,6 +236,7 @@
                         <Grid Padding="4,2" ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
@@ -263,6 +277,18 @@
                                 FontSize="11"
                                 Opacity="0.7"
                                 Text="{x:Bind ClipText, Mode=OneWay}" />
+                            <Button
+                                Grid.Column="6"
+                                Width="28"
+                                Height="28"
+                                Padding="0"
+                                Margin="6,0,0,0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Click="OnEditClipClicked"
+                                ToolTipService.ToolTip="Edit clip: trim, fade and gain">
+                                <FontIcon Glyph="&#xE8C6;" FontSize="12" />
+                            </Button>
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
