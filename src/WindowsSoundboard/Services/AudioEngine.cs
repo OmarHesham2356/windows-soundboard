@@ -290,6 +290,24 @@ public sealed class AudioEngine : IDisposable
                     return;
                 }
 
+                // Speed comes before the gain and the trims: the trim window below is
+                // measured in what actually comes out of the mixer, so a clip played at
+                // double rate reaches its trim end in half the source time.
+                var speed = clip?.EffectiveSpeed ?? 1.0;
+                var pitch = clip?.EffectivePitch ?? 0;
+                if (Math.Abs(speed - 1.0) > 0.005)
+                {
+                    source = SpeedScale.Apply(source, speed);
+                }
+
+                if (Math.Abs(pitch) >= 0.05)
+                {
+                    source = new SmbPitchShiftingSampleProvider(source)
+                    {
+                        PitchFactor = (float)Math.Pow(2, pitch / 12.0),
+                    };
+                }
+
                 var totalGainDb = gainDb + _boostDb + (clip?.GainDb ?? 0);
                 if (Math.Abs(totalGainDb) > 0.05)
                 {
@@ -305,13 +323,20 @@ public sealed class AudioEngine : IDisposable
                 var limitFrames = 0L;
                 if (clip is not null && clip.EndSeconds > clipStart + 0.02)
                 {
-                    limitFrames = (long)Math.Round((clip.EndSeconds - clipStart) * sampleRate);
+                    limitFrames = (long)Math.Round((clip.EndSeconds - clipStart) * sampleRate / speed);
                 }
 
-                var startFrame = (long)Math.Round((start - clipStart) * sampleRate);
+                var startFrame = (long)Math.Round((start - clipStart) * sampleRate / speed);
 
                 var fadeIn = clip is null ? 0 : (int)Math.Clamp(clip.FadeInMilliseconds, 0, 5000);
                 var fadeOut = clip is null ? 0 : (int)Math.Clamp(clip.FadeOutMilliseconds, 0, 5000);
+
+                var clipNote = clip is null
+                    ? string.Empty
+                    : $", clip {clip.StartSeconds:0.0#}s-{(clip.EndSeconds > 0.02 ? clip.EndSeconds.ToString("0.0#") : "end")}s " +
+                      $"fade {fadeIn}/{fadeOut}ms" +
+                      (Math.Abs(speed - 1.0) > 0.005 ? $", speed {speed:0.00}x" : string.Empty) +
+                      (Math.Abs(pitch) >= 0.05 ? $", pitch {pitch:+0;-0}st" : string.Empty);
 
                 var item = new PlaybackItem(
                     path, reader, source, FadeMilliseconds, loop, gainDb, clip,
@@ -321,7 +346,7 @@ public sealed class AudioEngine : IDisposable
 
                 Log.Info($"{_label}: play {Path.GetFileName(path)} ({mode}, {totalGainDb:+0.0;-0.0;0.0} dB" +
                          $"{(loop ? ", loop" : string.Empty)}{(startAtSeconds > 0.05 ? $", from {startAtSeconds:0.0}s" : string.Empty)}" +
-                         $"{(clip is null ? string.Empty : $", clip {clip.StartSeconds:0.0#}s-{(clip.EndSeconds > 0.02 ? clip.EndSeconds.ToString("0.0#") : "end")}s fade {fadeIn}/{fadeOut}ms")})");
+                         $"{clipNote})");
             }
         }
         catch (Exception ex)

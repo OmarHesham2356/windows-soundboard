@@ -9,87 +9,178 @@
     CloseButtonText="Cancel"
     DefaultButton="Primary">
 
-    <StackPanel MinWidth="560" Spacing="10">
-        <TextBlock x:Name="HeaderText" Opacity="0.75" TextWrapping="Wrap" />
+    <ScrollViewer
+        MaxHeight="600"
+        HorizontalScrollMode="Disabled"
+        HorizontalScrollBarVisibility="Disabled"
+        VerticalScrollBarVisibility="Auto">
+        <StackPanel MinWidth="560" Spacing="10">
+            <TextBlock x:Name="HeaderText" Opacity="0.75" TextWrapping="Wrap" />
 
-        <Border
-            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="1"
-            CornerRadius="6">
-            <Canvas x:Name="WaveCanvas" Height="110" SizeChanged="OnWaveSizeChanged" />
-        </Border>
+            <Border
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="6">
+                <Canvas
+                    x:Name="WaveCanvas"
+                    Background="Transparent"
+                    Height="110"
+                    PointerMoved="OnWavePointerMoved"
+                    PointerPressed="OnWavePointerPressed"
+                    PointerReleased="OnWavePointerReleased"
+                    SizeChanged="OnWaveSizeChanged" />
+            </Border>
 
-        <TextBlock x:Name="RangeText" FontSize="12" Opacity="0.7" />
+            <TextBlock x:Name="RangeText" FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
 
-        <Grid ColumnSpacing="12" RowSpacing="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="90" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="84" />
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+            <Grid ColumnSpacing="12" RowSpacing="4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="84" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-            <TextBlock Text="Start" VerticalAlignment="Center" FontWeight="SemiBold" />
-            <Slider
-                x:Name="StartSlider"
-                Grid.Column="1"
-                StepFrequency="0.01"
-                ValueChanged="OnStartChanged" />
-            <TextBlock x:Name="StartText" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
+                <TextBlock Text="Start" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <Slider
+                    x:Name="StartSlider"
+                    Grid.Column="1"
+                    StepFrequency="0.01"
+                    ValueChanged="OnStartChanged" />
+                <TextBlock x:Name="StartText" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
 
-            <TextBlock Grid.Row="1" Text="End" VerticalAlignment="Center" FontWeight="SemiBold" />
-            <Slider
-                x:Name="EndSlider"
-                Grid.Row="1"
-                Grid.Column="1"
-                StepFrequency="0.01"
-                ValueChanged="OnEndChanged" />
-            <TextBlock x:Name="EndText" Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
+                <TextBlock Grid.Row="1" Text="End" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <Slider
+                    x:Name="EndSlider"
+                    Grid.Row="1"
+                    Grid.Column="1"
+                    StepFrequency="0.01"
+                    ValueChanged="OnEndChanged" />
+                <TextBlock x:Name="EndText" Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
 
-            <TextBlock Grid.Row="2" Text="Gain" VerticalAlignment="Center" FontWeight="SemiBold" />
-            <Slider
-                x:Name="GainSlider"
-                Grid.Row="2"
-                Grid.Column="1"
-                Maximum="24"
-                Minimum="-24"
-                StepFrequency="0.5"
-                ValueChanged="OnGainChanged" />
-            <TextBlock x:Name="GainText" Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
+                <TextBlock Grid.Row="2" Text="Gain" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <Slider
+                    x:Name="GainSlider"
+                    Grid.Row="2"
+                    Grid.Column="1"
+                    Maximum="24"
+                    Minimum="-24"
+                    StepFrequency="0.5"
+                    ValueChanged="OnGainChanged" />
+                <TextBlock x:Name="GainText" Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
 
-            <TextBlock Grid.Row="3" Text="Fade in" VerticalAlignment="Center" FontWeight="SemiBold" />
-            <Slider
-                x:Name="FadeInSlider"
-                Grid.Row="3"
-                Grid.Column="1"
-                Maximum="2000"
-                Minimum="0"
-                StepFrequency="10"
-                ValueChanged="OnFadeInChanged" />
-            <TextBlock x:Name="FadeInText" Grid.Row="3" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
+                <TextBlock Grid.Row="3" Text="Fade in" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <Slider
+                    x:Name="FadeInSlider"
+                    Grid.Row="3"
+                    Grid.Column="1"
+                    Maximum="2000"
+                    Minimum="0"
+                    StepFrequency="10"
+                    ValueChanged="OnFadeInChanged" />
+                <TextBlock x:Name="FadeInText" Grid.Row="3" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
 
-            <TextBlock Grid.Row="4" Text="Fade out" VerticalAlignment="Center" FontWeight="SemiBold" />
-            <Slider
-                x:Name="FadeOutSlider"
-                Grid.Row="4"
-                Grid.Column="1"
-                Maximum="2000"
-                Minimum="0"
-                StepFrequency="10"
-                ValueChanged="OnFadeOutChanged" />
-            <TextBlock x:Name="FadeOutText" Grid.Row="4" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
-        </Grid>
+                <TextBlock Grid.Row="4" Text="Fade out" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <Slider
+                    x:Name="FadeOutSlider"
+                    Grid.Row="4"
+                    Grid.Column="1"
+                    Maximum="2000"
+                    Minimum="0"
+                    StepFrequency="10"
+                    ValueChanged="OnFadeOutChanged" />
+                <TextBlock x:Name="FadeOutText" Grid.Row="4" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
 
-        <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="Preview" Click="OnPreviewClicked" />
-            <TextBlock VerticalAlignment="Center" FontSize="12" Opacity="0.6" Text="The file itself is never changed — Reset restores it." />
+                <TextBlock Grid.Row="5" Text="Speed" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <Slider
+                    x:Name="SpeedSlider"
+                    Grid.Row="5"
+                    Grid.Column="1"
+                    Maximum="2"
+                    Minimum="0.5"
+                    StepFrequency="0.05"
+                    ValueChanged="OnSpeedChanged" />
+                <TextBlock x:Name="SpeedText" Grid.Row="5" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
+
+                <TextBlock Grid.Row="6" Text="Pitch" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <Slider
+                    x:Name="PitchSlider"
+                    Grid.Row="6"
+                    Grid.Column="1"
+                    Maximum="12"
+                    Minimum="-12"
+                    StepFrequency="1"
+                    ValueChanged="OnPitchChanged" />
+                <TextBlock x:Name="PitchText" Grid.Row="6" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
+            </Grid>
+
+            <Border
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="12">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Cut a section out" FontWeight="SemiBold" />
+                    <TextBlock
+                        FontSize="12"
+                        Opacity="0.65"
+                        TextWrapping="Wrap"
+                        Text="Saves the part being played with this range removed as a new WAV next to the original, then adds it to the board. The original file is never changed." />
+
+                    <Grid ColumnSpacing="12" RowSpacing="4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="84" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="From" VerticalAlignment="Center" Opacity="0.85" />
+                        <Slider
+                            x:Name="CutFromSlider"
+                            Grid.Column="1"
+                            StepFrequency="0.01"
+                            ValueChanged="OnCutRangeChanged" />
+                        <TextBlock x:Name="CutFromText" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
+
+                        <TextBlock Grid.Row="1" Text="To" VerticalAlignment="Center" Opacity="0.85" />
+                        <Slider
+                            x:Name="CutToSlider"
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            StepFrequency="0.01"
+                            ValueChanged="OnCutRangeChanged" />
+                        <TextBlock x:Name="CutToText" Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.7" />
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="Save cut copy" Click="OnCutExportClicked" />
+                        <TextBlock x:Name="CutHintText" VerticalAlignment="Center" FontSize="12" Opacity="0.6" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Preview" Click="OnPreviewClicked" />
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    Opacity="0.6"
+                    Text="Drag a marker on the waveform to trim. The file itself is never changed — Reset restores it." />
+            </StackPanel>
         </StackPanel>
-    </StackPanel>
+    </ScrollViewer>
 </ContentDialog>

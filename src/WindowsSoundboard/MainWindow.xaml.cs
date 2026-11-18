@@ -797,6 +797,15 @@ public sealed partial class MainWindow : Window
         };
 
         var choice = await dialog.ShowAsync();
+
+        // A cut is an export rather than an edit: it writes a new file and the dialog
+        // is gone by the time this returns, so it has to be handled before the result.
+        if (dialog.Cut is not null)
+        {
+            await ExportCutAsync(item, dialog.Cut);
+            return;
+        }
+
         if (choice == ContentDialogResult.None)
         {
             return;
@@ -819,12 +828,37 @@ public sealed partial class MainWindow : Window
         {
             Log.Info($"clip set: {item.Name} {item.Clip.Summary} (" +
                      $"{item.Clip.StartSeconds:0.00}-{(item.Clip.EndSeconds > 0 ? item.Clip.EndSeconds.ToString("0.00") : "end")}s, " +
-                     $"gain {item.Clip.GainDb:+0.0;-0.0;0.0} dB, fade {item.Clip.FadeInMilliseconds:0}/{item.Clip.FadeOutMilliseconds:0} ms)");
+                     $"gain {item.Clip.GainDb:+0.0;-0.0;0.0} dB, fade {item.Clip.FadeInMilliseconds:0}/{item.Clip.FadeOutMilliseconds:0} ms, " +
+                     $"speed {item.Clip.EffectiveSpeed:0.00}x, pitch {item.Clip.EffectivePitch:+0;-0} st)");
         }
 
         StatusText.Text = item.Clip is null ? $"{item.Name} plays whole." : $"{item.Name}: {item.Clip.Summary}.";
         _libraryVersion++;
         _ = AnalyseLoudnessAsync(_libraryVersion);
+    }
+
+    /// <summary>
+    /// Writes a copy of the sound with a range cut out, then reloads the library so the
+    /// copy appears as a new sound. The original file is never touched.
+    /// </summary>
+    private async Task ExportCutAsync(SoundItem item, CutRequest cut)
+    {
+        try
+        {
+            var (path, seconds) = await Task.Run(
+                () => ClipCutter.Cut(item.Path, cut.KeepFrom, cut.KeepTo, cut.CutFrom, cut.CutTo));
+
+            LoadSounds();
+            StatusText.Text = $"Saved {Path.GetFileName(path)} ({seconds:0.00}s).";
+            Log.Info($"cut exported: {Path.GetFileName(item.Path)} -> {Path.GetFileName(path)} " +
+                     $"(kept {cut.KeepFrom:0.00}-{cut.KeepTo:0.00}s, removed {cut.CutFrom:0.00}-{cut.CutTo:0.00}s, " +
+                     $"result {seconds:0.00}s)");
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"cutting {Path.GetFileName(item.Path)} failed", ex);
+            StatusText.Text = "That cut could not be written.";
+        }
     }
 
     private void ClearClip(SoundItem item)

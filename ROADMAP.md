@@ -13,7 +13,7 @@ Legend: **[next]** in progress · **[later]** planned · **[idea]** not committe
 
 ---
 
-## v0.2 — Clip shaping **[next]**
+## v0.2 — Clip shaping **[done]**
 
 The soundboard can only play a file as-is. Most clips people download start with
 half a second of silence, end with a tail, or are far too quiet compared to the
@@ -30,13 +30,12 @@ Done when a trimmed clip ends where it was trimmed (not merely stops being
 	audible), fades are audible, gain survives a restart, and a reset restores the
 	original file's playback byte for byte.
 
-Progress: trim, fades, gain and the waveform dialog are on `main` (the scissors
-button on a sound, or right-click a sound → Edit clip…). A 6 s file trimmed to 1.0–2.5 s plays for 1.509 s, and a
-looped clip wraps at the trim start again (a 1.0 s window wrapped at 1.002 s and
-was still playing five seconds later). Still to do before this milestone closes:
-verify the fades by ear.
+Progress: closed. Trim, fades, gain and the waveform dialog are on `main` (the
+scissors button on a sound, or right-click a sound → Edit clip…). A 6 s file
+trimmed to 1.0–2.5 s plays for 1.509 s, a looped clip wraps at the trim start
+again, and the fades were confirmed by ear.
 
-## v0.3 — Speed, pitch and cutting **[later]**
+## v0.3 — Speed, pitch and cutting **[next]**
 
 - Playback speed / pitch control per sound (the chipmunk and slowed-reverb toys).
 - Cut a section out of the middle of a clip.
@@ -44,6 +43,13 @@ verify the fades by ear.
 
 Cutting is the one edit that cannot be non-destructive with a plain offset model:
 it needs an exported copy next to the original, with the original left untouched.
+
+Progress: speed and pitch are per sound and stored in the config (`Speed`,
+`PitchSemitones`); speed is a varispeed resample, pitch is NAudio's SMB shifter,
+so speed changes tempo and pitch together while pitch alone keeps the length.
+Cutting writes a new `<name> (cut).wav` next to the original and reloads the
+library. The trim markers can be dragged on the waveform. Still open: zooming the
+waveform.
 
 ## v0.4 — A library that scales **[later]**
 
